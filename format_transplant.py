@@ -374,8 +374,8 @@ PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "ollama": {
         "base_url": "http://localhost:11434/api",
         "env": "OLLAMA_API_KEY",
-        "model": "llama3.2",
-        "fallbacks": ["llama3.1", "mistral", "phi3", "qwen2.5"],
+        "model": "ministral-3b-instruct-2512-q4_K_M",
+        "fallbacks": ["cas/llama-3.2-3b-instruct:latest", "llama3.2", "mistral", "phi3"],
         "batch_size": 15
     },
 }

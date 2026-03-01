@@ -534,9 +534,9 @@ class LLMTranslator:
         try:
             r = requests.get("http://localhost:11434/api/tags", timeout=2)
             models = r.json().get("models", [])
-            return models[0]["name"] if models else "llama3.2"
+            return models[0]["name"] if models else "ministral-3b-instruct-2512-q4_K_M"
         except:
-            return "llama3.2"
+            return "ministral-3b-instruct-2512-q4_K_M"
 
     async def get_available_models(self, provider_name: str) -> List[Dict[str, Any]]:
         """Query available models from the provider's API."""

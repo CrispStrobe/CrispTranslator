@@ -387,7 +387,7 @@ def create_interface():
                             "OpenAI": "gpt-4o-mini",
                             "Anthropic": "claude-3-5-sonnet-20241022",
                             "Groq": "llama-3.3-70b-versatile",
-                            "Ollama": "llama3.2"
+                            "Ollama": "ministral-3b-instruct-2512-q4_K_M"
                         }
                         return defaults.get(provider, "default")
 
