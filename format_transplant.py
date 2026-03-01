@@ -2582,12 +2582,18 @@ STYLE GUIDE:
 {styleguide}
 ──────────────────────────────────────────────────
 
-Apply this style guide to each of the {n} paragraphs below.
-Return EXACTLY {n} formatted paragraphs separated by the line:
-{sep}
-Do NOT number them. Do NOT add any commentary or blank lines between the separator and the next paragraph.
+Your task is to re-format {n} separate paragraphs according to the Style Guide.
+Each paragraph is provided inside indexed tags like [P1]...[/P1].
 
-PARAGRAPHS:
+INSTRUCTIONS:
+1. Process each paragraph individually.
+2. You MUST return each re-formatted paragraph inside matching indexed tags, e.g.:
+   [P1]Re-formatted text of first paragraph...[/P1]
+   [P2]Re-formatted text of second paragraph...[/P2]
+3. DO NOT merge paragraphs.
+4. DO NOT add any commentary or extra text outside the tags.
+
+PARAGRAPHS TO PROCESS:
 {content}
 """
 
@@ -2597,14 +2603,18 @@ STYLE GUIDE:
 {styleguide}
 ──────────────────────────────────────────────────
 
-Apply this style guide to each of the {n} footnotes below.
-Footnotes often contain citations, names, foreign terms and references —
-pay special attention to the citation and name conventions in the style guide.
-Return EXACTLY {n} formatted footnotes separated by the line:
-{sep}
-Do NOT number them. Do NOT add commentary.
+Your task is to re-format {n} separate footnotes according to the Style Guide.
+Each footnote is provided inside indexed tags like [F1]...[/F1].
 
-FOOTNOTES:
+INSTRUCTIONS:
+1. Process each footnote individually.
+2. You MUST return each re-formatted footnote inside matching indexed tags, e.g.:
+   [F1]Re-formatted text of first footnote...[/F1]
+   [F2]Re-formatted text of second footnote...[/F2]
+3. DO NOT merge footnotes.
+4. DO NOT add any commentary or extra text outside the tags.
+
+FOOTNOTES TO PROCESS:
 {content}
 """
 
@@ -2663,6 +2673,8 @@ class LLMContentFormatter:
             len(to_format), mode, config.para_batch_size,
         )
 
+        prefix = "P" if mode == "para" else "F"
+
         for batch_start in range(0, len(to_format), config.para_batch_size):
             # Inter-batch delay to stay under rate limits
             if batch_start > 0:
@@ -2673,14 +2685,17 @@ class LLMContentFormatter:
                 time.sleep(batch_delay)
 
             batch = to_format[batch_start: batch_start + config.para_batch_size]
-            texts = [p.get_text() for p in batch]
-
-            content = f"\n{_BATCH_SEP}\n".join(texts)
+            
+            # Wrap each paragraph in indexed tags
+            tagged_texts = []
+            for i, p in enumerate(batch, 1):
+                tagged_texts.append(f"[{prefix}{i}]{p.get_text()}[/{prefix}{i}]")
+            
+            content = "\n".join(tagged_texts)
             tmpl = _FN_USER_TMPL if mode == "footnote" else _PARA_USER_TMPL
             user_msg = tmpl.format(
                 styleguide=styleguide,
                 n=len(batch),
-                sep=_BATCH_SEP,
                 content=content,
             )
 
@@ -2691,40 +2706,48 @@ class LLMContentFormatter:
 
             try:
                 response = self.client.complete(_FMT_SYSTEM, user_msg, config)
-                parsed = self._parse_response(response, len(batch), texts)
+                parsed = self._parse_tagged_response(response, len(batch), [p.get_text() for p in batch], prefix)
             except Exception as exc:
                 logger.error("[LLM-FMT] Batch failed, using originals: %s", exc)
-                parsed = texts
+                parsed = [p.get_text() for p in batch]
 
             for pd, formatted in zip(batch, parsed):
                 if formatted.strip():
                     result[id(pd)] = formatted
                     logger.debug(
-                        "[LLM-FMT] Para formatted: orig='%.50s' → fmt='%.50s'",
-                        pd.get_text(), formatted,
+                        "[LLM-FMT] %s formatted: orig='%.50s' → fmt='%.50s'",
+                        mode.capitalize(), pd.get_text(), formatted,
                     )
 
         return result
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _parse_response(response: str, expected: int, originals: List[str]) -> List[str]:
+    def _parse_tagged_response(response: str, expected: int, originals: List[str], prefix: str) -> List[str]:
         """
-        Split the LLM response on _BATCH_SEP and return exactly `expected` strings.
-        Falls back to originals for any missing entries.
+        Extract content from [P1]...[/P1] or [F1]...[/F1] tags.
+        Falls back to originals for any missing or unparseable entries.
         """
-        parts = [p.strip() for p in response.split(_BATCH_SEP)]
-        parts = [p for p in parts if p]   # remove empties
-
-        if len(parts) != expected:
-            logger.warning(
-                "[LLM-FMT] Expected %d parts, got %d — padding/truncating",
-                expected, len(parts),
-            )
-        # Pad with originals if too short, truncate if too long
-        while len(parts) < expected:
-            parts.append(originals[len(parts)])
-        return parts[:expected]
+        results = []
+        for i in range(1, expected + 1):
+            tag = f"{prefix}{i}"
+            # Non-greedy match between start and end tags
+            pattern = rf"\[{tag}\](.*?)\[\/{tag}\]"
+            match = re.search(pattern, response, re.DOTALL)
+            
+            if match:
+                results.append(match.group(1).strip())
+            else:
+                # Try fallback: just the start tag if the LLM forgot the end tag
+                pattern_fallback = rf"\[{tag}\](.*?)(?=\[{prefix}{i+1}\]|$)"
+                match_fallback = re.search(pattern_fallback, response, re.DOTALL)
+                if match_fallback:
+                    results.append(match_fallback.group(1).strip())
+                else:
+                    logger.warning("[LLM-FMT] Could not find tag [%s] in response", tag)
+                    results.append(originals[i-1])
+        
+        return results
 
 
 # ============================================================================
