@@ -448,35 +448,47 @@ class NLLBTranslator:
             return texts
         
 class LLMTranslator:
-    """LLM translator (OpenAI/Anthropic/Ollama)"""
+    """LLM translator (OpenAI/Anthropic/Ollama/Groq)"""
     
-    def __init__(self, src_lang: str, tgt_lang: str, preferred_provider: Optional[str] = None):
+    def __init__(self, src_lang: str, tgt_lang: str, preferred_provider: Optional[str] = None, preferred_model: Optional[str] = None):
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
-        self.providers = self._init_providers(preferred_provider)
+        self.providers = self._init_providers(preferred_provider, preferred_model)
         
         if self.providers:
             logger.info(f"✓ LLM available ({list(self.providers.keys())})")
     
-    def _init_providers(self, preferred: Optional[str] = None) -> Dict[str, Any]:
+    def _init_providers(self, preferred: Optional[str] = None, preferred_model: Optional[str] = None) -> Dict[str, Any]:
         providers = {}
         
         if HAS_OPENAI and os.getenv("OPENAI_API_KEY"):
             providers["openai"] = {
                 "client": AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")),
-                "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+                "model": preferred_model if preferred == "openai" and preferred_model else os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                "base_url": "https://api.openai.com/v1"
+            }
+            
+        if HAS_OPENAI and os.getenv("GROQ_API_KEY"):
+            providers["groq"] = {
+                "client": AsyncOpenAI(
+                    api_key=os.getenv("GROQ_API_KEY"),
+                    base_url="https://api.groq.com/openai/v1"
+                ),
+                "model": preferred_model if preferred == "groq" and preferred_model else os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                "base_url": "https://api.groq.com/openai/v1"
             }
         
         if HAS_ANTHROPIC and os.getenv("ANTHROPIC_API_KEY"):
             providers["anthropic"] = {
                 "client": AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY")),
-                "model": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+                "model": preferred_model if preferred == "anthropic" and preferred_model else os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+                "base_url": "https://api.anthropic.com/v1"
             }
         
         if self._check_ollama():
             providers["ollama"] = {
-                "url": "http://localhost:11434/api/generate",
-                "model": self._get_ollama_model()
+                "url": "http://localhost:11434/api",
+                "model": preferred_model if preferred == "ollama" and preferred_model else self._get_ollama_model()
             }
         
         if preferred and preferred in providers:
@@ -498,6 +510,63 @@ class LLMTranslator:
             return models[0]["name"] if models else "llama3.2"
         except:
             return "llama3.2"
+
+    async def get_available_models(self, provider_name: str) -> List[Dict[str, Any]]:
+        """Query available models from the provider's API."""
+        if provider_name not in self.providers:
+            logger.warning(f"Provider {provider_name} not initialized.")
+            return []
+            
+        provider = self.providers[provider_name]
+        logger.info(f"Querying models for {provider_name}...")
+        
+        try:
+            if provider_name in ["openai", "groq"]:
+                headers = {"Authorization": f"Bearer {os.getenv(f'{provider_name.upper()}_API_KEY')}"}
+                r = requests.get(f"{provider['base_url']}/models", headers=headers, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    models = []
+                    for m in data.get("data", []):
+                        m_id = m.get("id")
+                        caps = []
+                        if "context_window" in m: caps.append(f"ctx: {m['context_window']}")
+                        info = {"id": m_id, "capabilities": ", ".join(caps) if caps else "Available"}
+                        models.append(info)
+                        logger.debug(f"Found {provider_name} model: {m_id} ({info['capabilities']})")
+                    return models
+                    
+            elif provider_name == "anthropic":
+                headers = {
+                    "x-api-key": os.getenv("ANTHROPIC_API_KEY"),
+                    "anthropic-version": "2023-06-01"
+                }
+                r = requests.get("https://api.anthropic.com/v1/models", headers=headers, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    models = []
+                    for m in data.get("data", []):
+                        m_id = m.get("id")
+                        models.append({"id": m_id, "capabilities": f"Display: {m.get('display_name', '')}"})
+                        logger.debug(f"Found Anthropic model: {m_id}")
+                    return models
+                    
+            elif provider_name == "ollama":
+                r = requests.get(f"{provider['url']}/tags", timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    models = []
+                    for m in data.get("models", []):
+                        m_id = m.get("name")
+                        details = m.get("details", {})
+                        caps = f"{details.get('parameter_size', '?')} params"
+                        models.append({"id": m_id, "capabilities": caps})
+                        logger.debug(f"Found Ollama model: {m_id} ({caps})")
+                    return models
+        except Exception as e:
+            logger.error(f"Failed to list models for {provider_name}: {e}")
+            
+        return []
     
     async def translate_text(self, text: str, use_alignment: bool = True) -> Optional[str]:
         """Translate single text"""
@@ -519,7 +588,7 @@ class LLMTranslator:
         
         for provider_name, provider in self.providers.items():
             try:
-                if provider_name == "openai":
+                if provider_name in ["openai", "groq"]:
                     response = await provider["client"].chat.completions.create(
                         model=provider["model"],
                         messages=[{"role": "user", "content": prompt}],
@@ -539,7 +608,7 @@ class LLMTranslator:
                 
                 elif provider_name == "ollama":
                     r = requests.post(
-                        provider["url"],
+                        f"{provider['url']}/generate",
                         json={"model": provider["model"], "prompt": prompt, "stream": False},
                         timeout=120
                     )
@@ -982,6 +1051,7 @@ class UltimateDocumentTranslator:
         mode: TranslationMode = TranslationMode.HYBRID,
         nmt_backend: Optional[str] = "nllb",
         llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
         aligner: Optional[str] = None,
         nllb_model_size: str = "600M"
     ):
@@ -995,6 +1065,8 @@ class UltimateDocumentTranslator:
 
         logger.info(f"INIT | Starting Translator ({src_lang}→{tgt_lang})")
         logger.info(f"INIT | Mode: {mode.value} | NMT: {nmt_backend} | Aligner: {aligner or 'auto'}")
+        if llm_provider:
+            logger.info(f"INIT | LLM Provider: {llm_provider} | Model: {llm_model or 'default'}")
         self.log_memory("Initialization Start")
 
         # 1. NMT BACKEND SELECTION (Exclusive)
@@ -1024,9 +1096,9 @@ class UltimateDocumentTranslator:
 
         # 2. LLM BACKEND (Hybrid or LLM modes)
         if mode in [TranslationMode.LLM_WITH_ALIGN, TranslationMode.LLM_WITHOUT_ALIGN, TranslationMode.HYBRID]:
-            self.llm = LLMTranslator(src_lang, tgt_lang, llm_provider)
+            self.llm = LLMTranslator(src_lang, tgt_lang, llm_provider, llm_model)
             if not self.llm.providers:
-                logger.warning("INIT | Mode requires LLM but no providers (OpenAI/Anthropic/Ollama) available.")
+                logger.warning("INIT | Mode requires LLM but no providers (OpenAI/Anthropic/Ollama/Groq) available.")
 
         # 3. ALIGNER SELECTION (Priority: Awesome-Align)
         if mode in [TranslationMode.LLM_WITH_ALIGN, TranslationMode.HYBRID, TranslationMode.NMT_ONLY]:

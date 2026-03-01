@@ -63,6 +63,7 @@ HAS_LXML  = _check("lxml",       "from lxml import etree")
 HAS_OPENAI    = _check("openai",       "from openai import OpenAI")
 HAS_ANTHROPIC = _check("anthropic",    "import anthropic")
 HAS_POE       = _check("fastapi-poe",  "import fastapi_poe as fp")
+HAS_REQUESTS  = _check("requests",     "import requests")
 
 print("-" * 44)
 
@@ -79,6 +80,7 @@ from docx.oxml.shared import OxmlElement  # noqa: E402
 from docx.shared import Emu, Pt, RGBColor  # noqa: E402
 from docx.text.paragraph import Paragraph  # noqa: E402
 from lxml import etree  # noqa: E402
+import requests  # noqa: E402
 
 # ============================================================================
 # LOGGING
@@ -278,22 +280,26 @@ class BlueprintSchema:
 class LLMProvider(Enum):
     OPENAI     = "openai"
     ANTHROPIC  = "anthropic"
+    GROQ       = "groq"
     NEBIUS     = "nebius"
     SCALEWAY   = "scaleway"
     OPENROUTER = "openrouter"
     MISTRAL    = "mistral"
     POE        = "poe"
+    OLLAMA     = "ollama"
 
 
 # Per-provider defaults — base_url=None means the provider uses its own SDK
 PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "openai":     {"base_url": "https://api.openai.com/v1",           "env": "OPENAI_API_KEY",    "model": "gpt-4o"},
-    "anthropic":  {"base_url": None,                                   "env": "ANTHROPIC_API_KEY", "model": "claude-opus-4-5"},
+    "anthropic":  {"base_url": None,                                   "env": "ANTHROPIC_API_KEY", "model": "claude-3-5-sonnet-20241022"},
+    "groq":       {"base_url": "https://api.groq.com/openai/v1",      "env": "GROQ_API_KEY",      "model": "llama-3.3-70b-versatile"},
     "nebius":     {"base_url": "https://api.studio.nebius.com/v1",    "env": "NEBIUS_API_KEY",    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct"},
     "scaleway":   {"base_url": "https://api.scaleway.ai/v1",          "env": "SCW_SECRET_KEY",    "model": "llama-3.3-70b-instruct"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1",        "env": "OPENROUTER_API_KEY","model": "meta-llama/llama-3.3-70b-instruct"},
     "mistral":    {"base_url": "https://api.mistral.ai/v1",           "env": "MISTRAL_API_KEY",   "model": "mistral-large-latest"},
     "poe":        {"base_url": None,                                   "env": "POE_API_KEY",       "model": "Claude-3.7-Sonnet"},
+    "ollama":     {"base_url": "http://localhost:11434/api",          "env": "OLLAMA_API_KEY",    "model": "llama3.2"},
 }
 
 
@@ -1939,7 +1945,7 @@ class MultiProviderLLMClient:
     """
     Unified synchronous LLM client.
 
-    OpenAI-compatible providers (OpenAI, Nebius, Scaleway, OpenRouter, Mistral)
+    OpenAI-compatible providers (OpenAI, Nebius, Scaleway, OpenRouter, Mistral, Groq, Ollama)
     all use `openai.OpenAI(base_url=…)`.
     Anthropic uses its own SDK.
     Poe uses fastapi-poe (async, wrapped synchronously).
@@ -1953,6 +1959,8 @@ class MultiProviderLLMClient:
                     return self._anthropic(system, user, config)
                 elif config.provider == LLMProvider.POE:
                     return self._poe(system, user, config)
+                elif config.provider == LLMProvider.OLLAMA:
+                    return self._ollama(system, user, config)
                 else:
                     return self._openai_compat(system, user, config)
             except Exception as exc:
@@ -1965,6 +1973,116 @@ class MultiProviderLLMClient:
         raise RuntimeError(
             f"[LLM] All {config.max_retries} attempts failed for {config.provider.value}"
         )
+
+    def get_available_models(self, config: LLMConfig) -> List[Dict[str, Any]]:
+        """
+        Query available models from the provider's /models endpoint.
+        Returns a list of model info dictionaries with parsed capabilities.
+        """
+        logger.info("[LLM] Querying available models for %s...", config.provider.value)
+        try:
+            if config.provider == LLMProvider.ANTHROPIC:
+                return self._list_anthropic_models(config)
+            elif config.provider == LLMProvider.POE:
+                return [{"id": "Poe Bots", "capabilities": "Unknown"}]
+            elif config.provider == LLMProvider.OLLAMA:
+                return self._list_ollama_models(config)
+            else:
+                return self._list_openai_compat_models(config)
+        except Exception as e:
+            logger.error("[LLM] Failed to query models for %s: %s", config.provider.value, e)
+            return []
+
+    def _list_openai_compat_models(self, config: LLMConfig) -> List[Dict[str, Any]]:
+        base_url = config.base_url or PROVIDER_DEFAULTS.get(config.provider.value, {}).get("base_url")
+        if not base_url:
+            return []
+        
+        headers = {"Authorization": f"Bearer {config.api_key}"}
+        if config.provider == LLMProvider.OPENROUTER:
+            headers["X-Title"] = "CrispTranslator"
+            
+        try:
+            resp = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+            if resp.status_code != 200:
+                logger.error("[LLM] HTTP %d: %s", resp.status_code, resp.text)
+                return []
+            
+            data = resp.json()
+            models = []
+            raw_models = data.get("data", []) if isinstance(data, dict) else data
+            
+            for m in raw_models:
+                m_id = m.get("id")
+                if not m_id: continue
+                
+                # Parse capabilities
+                caps = []
+                if "context_window" in m:
+                    caps.append(f"ctx: {m['context_window']}")
+                elif "context_length" in m:
+                    caps.append(f"ctx: {m['context_length']}")
+                
+                if m.get("pricing"):
+                    p = m["pricing"]
+                    caps.append(f"price: {p.get('prompt', '?')}/{p.get('completion', '?')}")
+                
+                info = {
+                    "id": m_id,
+                    "capabilities": ", ".join(caps) if caps else "Available",
+                    "raw": m
+                }
+                models.append(info)
+                logger.debug("[LLM] Found model: %s (%s)", m_id, info["capabilities"])
+                
+            return sorted(models, key=lambda x: x["id"])
+        except Exception as e:
+            logger.debug("[LLM] Model listing failed: %s", e)
+            return []
+
+    def _list_anthropic_models(self, config: LLMConfig) -> List[Dict[str, Any]]:
+        # Anthropic recently added /v1/models
+        headers = {
+            "x-api-key": config.api_key,
+            "anthropic-version": "2023-06-01"
+        }
+        try:
+            resp = requests.get("https://api.anthropic.com/v1/models", headers=headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = []
+                for m in data.get("data", []):
+                    m_id = m.get("id")
+                    info = {
+                        "id": m_id,
+                        "capabilities": f"Display: {m.get('display_name', '')}",
+                        "raw": m
+                    }
+                    models.append(info)
+                    logger.debug("[LLM] Found Anthropic model: %s", m_id)
+                return models
+        except:
+            pass
+        # Fallback if endpoint is not available
+        return [{"id": "claude-3-5-sonnet-20241022", "capabilities": "Hardcoded Fallback"}]
+
+    def _list_ollama_models(self, config: LLMConfig) -> List[Dict[str, Any]]:
+        base_url = config.base_url or "http://localhost:11434/api"
+        try:
+            resp = requests.get(f"{base_url}/tags", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = []
+                for m in data.get("models", []):
+                    m_id = m.get("name")
+                    details = m.get("details", {})
+                    caps = f"{details.get('parameter_size', '?')} params, {details.get('format', '?')}"
+                    models.append({"id": m_id, "capabilities": caps, "raw": m})
+                    logger.debug("[LLM] Found Ollama model: %s (%s)", m_id, caps)
+                return models
+        except:
+            pass
+        return []
 
     # ── OpenAI-compatible ─────────────────────────────────────────────
     def _openai_compat(self, system: str, user: str, config: LLMConfig) -> str:
@@ -1995,6 +2113,36 @@ class MultiProviderLLMClient:
             temperature=config.temperature,
             extra_headers=extra_headers or None,
         )
+        text = resp.choices[0].message.content or ""
+        logger.debug("[LLM] Response: %d chars", len(text))
+        return text
+
+    # ── Ollama ────────────────────────────────────────────────────────
+    def _ollama(self, system: str, user: str, config: LLMConfig) -> str:
+        base_url = config.base_url or "http://localhost:11434/api"
+        logger.debug("[LLM] ollama → %s | sys=%d chars user=%d chars",
+                     config.model, len(system), len(user))
+        
+        prompt = f"{system}\n\n{user}" if system else user
+        
+        resp = requests.post(
+            f"{base_url}/generate",
+            json={
+                "model": config.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": config.temperature,
+                }
+            },
+            timeout=180
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Ollama error {resp.status_code}: {resp.text}")
+        
+        text = resp.json().get("response", "")
+        logger.debug("[LLM] Response: %d chars", len(text))
+        return text
         text = resp.choices[0].message.content or ""
         logger.debug("[LLM] Response: %d chars", len(text))
         return text

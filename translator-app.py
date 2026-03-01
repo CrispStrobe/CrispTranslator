@@ -89,6 +89,7 @@ async def translate_document_async(
     nllb_size: str,
     aligner: str,
     llm_provider: Optional[str],
+    llm_model: Optional[str] = None,
     progress=gr.Progress()
 ) -> Tuple[Optional[str], str]:
     """
@@ -142,6 +143,7 @@ async def translate_document_async(
             mode=mode_map[mode],
             nmt_backend=nmt_backend.lower() if nmt_backend != "Auto" else "auto",
             llm_provider=llm_provider.lower() if llm_provider and llm_provider != "None" else None,
+            llm_model=llm_model if llm_model and llm_model != "default" else None,
             aligner=aligner.lower() if aligner != "Auto" else "auto",
             nllb_model_size=nllb_size
         )
@@ -330,11 +332,47 @@ def create_interface():
                     info="Auto will select best available aligner"
                 )
                 
-                llm_provider = gr.Dropdown(
-                    choices=["None", "OpenAI", "Anthropic", "Ollama"],
-                    value="None",
-                    label="LLM Provider (Optional)",
-                    info="Requires API key in environment variables"
+                with gr.Row():
+                    llm_provider = gr.Dropdown(
+                        choices=["None", "OpenAI", "Anthropic", "Ollama", "Groq"],
+                        value="None",
+                        label="LLM Provider (Optional)",
+                        info="Requires API key in environment variables"
+                    )
+                    llm_model = gr.Dropdown(
+                        choices=["default"],
+                        value="default",
+                        allow_custom_value=True,
+                        label="LLM Model",
+                        info="Click fetch to update list"
+                    )
+                    fetch_llm_btn = gr.Button("🔄", size="sm")
+
+                # --- Fetch models logic for translator ---
+                async def _fetch_translator_models(provider):
+                    if provider == "None":
+                        return gr.update(choices=["default"], value="default")
+                    
+                    try:
+                        # We need an instance to call get_available_models
+                        # Temporary translator instance
+                        from translator import LLMTranslator
+                        t = LLMTranslator("en", "de", preferred_provider=provider.lower())
+                        
+                        models = await t.get_available_models(provider.lower())
+                        if not models:
+                            return gr.update(choices=["default"], value="default")
+                        
+                        choices = [m["id"] for m in models]
+                        return gr.update(choices=choices, value=choices[0])
+                    except Exception as e:
+                        logger.error(f"Fetch failed: {e}")
+                        return gr.update(choices=["default"], value="default")
+
+                fetch_llm_btn.click(
+                    fn=_fetch_translator_models,
+                    inputs=[llm_provider],
+                    outputs=[llm_model]
                 )
                 
                 translate_btn = gr.Button("🚀 Translate Document", variant="primary", size="lg")
@@ -384,10 +422,10 @@ def create_interface():
         - LLM modes are slower and require API access
         """)
         
-        def handle_translate(input_f, src_lang_name, tgt_lang_name, mode, nmt, nllb_sz, algn, llm):
+        def handle_translate(input_f, src_lang_name, tgt_lang_name, mode, nmt, nllb_sz, algn, llm_p, llm_m):
             src_code = languages.get(src_lang_name, "en")
             tgt_code = languages.get(tgt_lang_name, "de")
-            return translate_document_sync(input_f, src_code, tgt_code, mode, nmt, nllb_sz, algn, llm)
+            return translate_document_sync(input_f, src_code, tgt_code, mode, nmt, nllb_sz, algn, llm_p, llm_m)
         
         translate_btn.click(
             fn=handle_translate,
@@ -399,7 +437,8 @@ def create_interface():
                 nmt_backend,
                 nllb_size,
                 aligner,
-                llm_provider
+                llm_provider,
+                llm_model
             ],
             outputs=[output_file, log_output]
         )

@@ -428,17 +428,51 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
                     value="(none)",
                     info="Select an LLM provider. API key must be available.",
                 )
-                llm_model = gr.Textbox(
-                    label="Model  (leave blank for provider default)",
-                    placeholder="auto",
-                    info="e.g. gpt-4o, claude-opus-4-5, mistral-large-latest, …",
+                llm_model = gr.Dropdown(
+                    label="Model",
+                    choices=["auto"],
+                    value="auto",
+                    allow_custom_value=True,
+                    info="Select a model or type a custom one. Use 'Fetch Models' to update list.",
                 )
+                fetch_models_btn = gr.Button("🔄 Fetch Models", size="sm")
                 llm_api_key = gr.Textbox(
-                    label="API key  (leave blank to use env var)",
+                    label="API key  (optional)",
                     type="password",
                     placeholder="sk-…",
-                    info="Falls back to the provider's env variable if empty.",
+                    info="Overrides env variable if provided.",
                 )
+
+            # --- Logic to fetch models ---
+            def _fetch_models(provider, api_key):
+                if provider == "(none)":
+                    return gr.update(choices=["auto"], value="auto")
+                
+                try:
+                    # Temporary config to use for fetching
+                    cfg = llm_config_from_args(provider, api_key=api_key)
+                    client = MultiProviderLLMClient()
+                    models = client.get_available_models(cfg)
+                    
+                    if not models:
+                        return gr.update(choices=["auto"], value="auto")
+                    
+                    choices = [m["id"] for m in models]
+                    # Also include the default model from PROVIDER_DEFAULTS if not in list
+                    default_m = PROVIDER_DEFAULTS.get(provider, {}).get("model")
+                    if default_m and default_m not in choices:
+                        choices.insert(0, default_m)
+                    
+                    return gr.update(choices=choices, value=choices[0])
+                except Exception as e:
+                    logger.error(f"Fetch models failed: {e}")
+                    return gr.update(choices=["auto", f"Error: {str(e)[:20]}..."], value="auto")
+
+            fetch_models_btn.click(
+                fn=_fetch_models,
+                inputs=[llm_provider, llm_api_key],
+                outputs=[llm_model]
+            )
 
             with gr.Row():
                 llm_mode = gr.Radio(
