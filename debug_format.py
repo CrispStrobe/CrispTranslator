@@ -581,6 +581,7 @@ def cmd_footnotes(args):
                 t_text    = _get_text(r)
                 fn_ref    = r.find(f".//{w('footnoteRef')}")
                 fn_ref_in = r.find(f".//{w('footnoteReference')}")
+                has_tab   = r.find(f".//{w('tab')}") is not None
 
                 rStyle_val = ""
                 sz_val     = ""
@@ -617,10 +618,14 @@ def cmd_footnotes(args):
                     label = "(footnoteRef marker)"
                 elif fn_ref_in is not None:
                     label = "(footnoteReference anchor)"
+                elif has_tab:
+                    label = "<w:tab/> separator"
                 elif t_text == "\t":
-                    label = "TAB separator"
+                    label = "TAB separator (text)"
                 elif t_text == " ":
                     label = "SPACE separator"
+                elif t_text == "":
+                    label = "(empty run)"
                 else:
                     label = repr(t_text[:30])
 
