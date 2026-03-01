@@ -225,7 +225,7 @@ python format_transplant.py template.docx manuscript.docx out.docx \
 
 ```bash
 python transplant-app.py
-# → http://localhost:7861
+# → http://localhost:7860
 ```
 
 Upload blueprint and source files, optionally enter style overrides (one `Source Style = Blueprint Style` pair per line), and click **Run**. The log shows a style mapping summary followed by the full pipeline trace.

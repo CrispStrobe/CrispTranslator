@@ -582,8 +582,10 @@ and add an override.
 
 if __name__ == "__main__":
     demo = create_interface()
+    # Respect the GRADIO_SERVER_PORT environment variable if set (standard for HF Spaces)
+    server_port = int(os.getenv("GRADIO_SERVER_PORT", 7860))
     demo.launch(
         server_name="0.0.0.0",
-        server_port=7861,
+        server_port=server_port,
         share=False,
     )

@@ -262,6 +262,13 @@ class BlueprintSchema:
     body_para_style_names: Set[str] = field(default_factory=set)
     # Character style ID used for footnote number runs (e.g. "FootnoteReference")
     footnote_ref_char_style_id: str = "FootnoteReference"
+    # Actual <w:rPr> element deep-copied from the blueprint's own footnote marker
+    # runs. Applied verbatim so font, size, and superscript match the blueprint.
+    # None = blueprint has no numbered footnotes (fall back to char style reference).
+    footnote_marker_rPr_xml: Optional[Any] = None
+    # Separator text that the blueprint places immediately after the footnote number
+    # (typically "\t", sometimes " ", rarely ""). None = not yet determined.
+    footnote_separator: Optional[str] = None
 
 
 # ============================================================================
@@ -471,6 +478,7 @@ class BlueprintAnalyzer:
         self._styles(doc, schema)
         self._defaults(doc, schema)
         self._body_inventory(doc, schema)
+        self._footnote_format(doc, schema)
         logger.info(
             "[BLUEPRINT] Done: %d section(s), %d style(s), "
             "%d unique body-para styles",
@@ -656,6 +664,140 @@ class BlueprintAnalyzer:
             "[BLUEPRINT] Body para styles present: %s",
             sorted(schema.body_para_style_names),
         )
+
+    # ------------------------------------------------------------------
+    def _footnote_format(self, doc: Document, schema: BlueprintSchema) -> None:
+        """
+        Read the first 3 blueprint footnotes to learn the exact formatting the
+        blueprint uses for footnote marker runs and the separator that follows them.
+
+        Two things are extracted:
+          footnote_marker_rPr_xml — the <w:rPr> element from the <w:footnoteRef>
+              run, deep-copied verbatim. Captures font name, size, vertAlign,
+              superscript, color etc. exactly as they appear in the blueprint.
+          footnote_separator — the text content of the run immediately after the
+              marker run: "\t" (tab), " " (space), "" (none), or anything else.
+
+        Both are read from the *blueprint's own footnotes* (not the source),
+        so the output always matches the blueprint's convention regardless of
+        what the source document was doing.
+        """
+        try:
+            fn_part = None
+            for rel in doc.part.rels.values():
+                if "relationships/footnotes" in rel.reltype:
+                    fn_part = rel.target_part
+                    break
+            if fn_part is None:
+                logger.debug(
+                    "[BLUEPRINT] No footnotes part – footnote format detection skipped"
+                )
+                return
+
+            root = parse_xml(fn_part.blob)
+            rPr_found = False
+            sep_found = False
+            samples = 0
+
+            for fn_elem in _xpath(root, "//w:footnote"):
+                try:
+                    fn_id = int(fn_elem.get(_w("id"), "0"))
+                except (ValueError, TypeError):
+                    continue
+                if fn_id <= 0:
+                    continue  # Word-internal separators / continuation markers
+
+                samples += 1
+                if samples > 3:
+                    break
+
+                # Only the first paragraph of each footnote carries the marker
+                p_elems = _xpath(fn_elem, ".//w:p")
+                if not p_elems:
+                    continue
+                p_elem = p_elems[0]
+                runs = list(p_elem.findall(qn("w:r")))
+
+                for ri, r_elem in enumerate(runs):
+                    if not _xpath(r_elem, ".//w:footnoteRef"):
+                        continue
+
+                    # ── Marker rPr (verbatim deep-copy) ──────────────────
+                    if not rPr_found:
+                        rPr = r_elem.find(qn("w:rPr"))
+                        if rPr is not None:
+                            schema.footnote_marker_rPr_xml = copy.deepcopy(rPr)
+                            rPr_found = True
+                            logger.debug(
+                                "[BLUEPRINT] Footnote marker rPr captured "
+                                "(fn id=%d): %s",
+                                fn_id,
+                                [c.tag.split("}")[-1] for c in rPr],
+                            )
+                        else:
+                            logger.debug(
+                                "[BLUEPRINT] Footnote marker run has no rPr (fn id=%d)",
+                                fn_id,
+                            )
+
+                    # ── Separator after marker ────────────────────────────
+                    # A separator run is one whose ENTIRE text content is
+                    # whitespace (tab, space, or empty). If the next run has
+                    # actual content, this footnote has no dedicated separator
+                    # run — skip it and try the next footnote.
+                    if not sep_found:
+                        if ri + 1 < len(runs):
+                            next_r = runs[ri + 1]
+                            t_elems = next_r.findall(qn("w:t"))
+                            sep_text = "".join(t.text or "" for t in t_elems)
+                            if sep_text.strip() == "":
+                                # Pure whitespace → this IS the separator run
+                                schema.footnote_separator = sep_text
+                                sep_found = True
+                                label = repr(sep_text) if sep_text else "(empty)"
+                                logger.debug(
+                                    "[BLUEPRINT] Footnote separator: %s (fn id=%d)",
+                                    label, fn_id,
+                                )
+                            else:
+                                # Next run is actual footnote text — no separator
+                                # run in this footnote; keep looking in later ones
+                                logger.debug(
+                                    "[BLUEPRINT] Footnote id=%d: no separator run "
+                                    "(text starts immediately after marker)",
+                                    fn_id,
+                                )
+                        # else: no run after marker — keep looking
+
+                    break  # found the marker in this footnote; move to next footnote
+
+                if rPr_found and sep_found:
+                    break
+
+            if samples == 0:
+                logger.debug("[BLUEPRINT] Blueprint has no numbered footnotes to sample")
+            else:
+                # If we sampled footnotes but never found a pure-whitespace separator
+                # run, the blueprint uses no separator — record that explicitly.
+                if not sep_found:
+                    schema.footnote_separator = ""
+                    logger.debug(
+                        "[BLUEPRINT] No separator run found across %d sampled footnote(s)"
+                        " — blueprint uses no explicit separator",
+                        samples,
+                    )
+                logger.info(
+                    "[BLUEPRINT] Footnote format: marker_rPr=%s  separator=%s",
+                    "captured" if rPr_found else "none",
+                    repr(schema.footnote_separator)
+                    if schema.footnote_separator is not None
+                    else "not found",
+                )
+
+        except Exception as exc:
+            logger.warning(
+                "[BLUEPRINT] Footnote format detection error: %s", exc, exc_info=True
+            )
 
 
 # ============================================================================
@@ -1641,6 +1783,9 @@ class DocumentBuilder:
                             for child in [c for c in rPr if c.tag not in KEEP_RPR_TAGS]:
                                 rPr.remove(child)
 
+                    # Ensure separator after marker matches blueprint convention
+                    self._normalize_fn_separator(p_elem)
+
                 fn_root.append(fn_xml)
                 logger.debug(
                     "[BUILD] Inserted footnote id=%s (%d para(s))",
@@ -1669,26 +1814,114 @@ class DocumentBuilder:
     # ------------------------------------------------------------------
     def _apply_fn_ref_style(self, r_elem: Any) -> None:
         """
-        Replace the footnoteRef run's rPr with the blueprint's footnote-reference
-        character style. This applies the blueprint's formatting (superscript,
-        font size, font face) to the footnote number at the bottom of the page,
-        discarding the source document's character style which may not exist in
-        the blueprint.
+        Replace the footnoteRef marker run's rPr with the blueprint's actual
+        footnote-number formatting, read directly from the blueprint's own footnotes.
+
+        Priority:
+          1. Verbatim <w:rPr> deep-copied from the blueprint's real marker runs
+             (captures font name, size, vertAlign/superscript, color exactly).
+          2. Fallback: a bare <w:rStyle> referencing the blueprint's detected
+             FootnoteReference character style — used when the blueprint had no
+             numbered footnotes to sample from.
         """
-        rPr = r_elem.find(qn("w:rPr"))
-        if rPr is None:
-            rPr = OxmlElement("w:rPr")
-            r_elem.insert(0, rPr)
+        # Remove any existing rPr first
+        old_rPr = r_elem.find(qn("w:rPr"))
+        if old_rPr is not None:
+            r_elem.remove(old_rPr)
+
+        if self.schema.footnote_marker_rPr_xml is not None:
+            # Use the exact rPr read from the blueprint's footnotes
+            new_rPr = copy.deepcopy(self.schema.footnote_marker_rPr_xml)
+            r_elem.insert(0, new_rPr)
+            logger.debug("[BUILD] FootnoteRef run: applied blueprint marker rPr (verbatim)")
         else:
-            for child in list(rPr):
-                rPr.remove(child)
-        rStyle = OxmlElement("w:rStyle")
-        rStyle.set(qn("w:val"), self.schema.footnote_ref_char_style_id)
-        rPr.insert(0, rStyle)
-        logger.debug(
-            "[BUILD] FootnoteRef run: applied blueprint style '%s'",
-            self.schema.footnote_ref_char_style_id,
-        )
+            # Fallback: only apply the character style reference
+            new_rPr = OxmlElement("w:rPr")
+            rStyle = OxmlElement("w:rStyle")
+            rStyle.set(qn("w:val"), self.schema.footnote_ref_char_style_id)
+            new_rPr.append(rStyle)
+            r_elem.insert(0, new_rPr)
+            logger.debug(
+                "[BUILD] FootnoteRef run: applied char style '%s' (fallback)",
+                self.schema.footnote_ref_char_style_id,
+            )
+
+    # ------------------------------------------------------------------
+    def _normalize_fn_separator(self, p_elem: Any) -> None:
+        """
+        Ensure the run immediately after <w:footnoteRef> carries the same
+        separator text as the blueprint's footnotes (tab, space, or nothing).
+
+        Three cases handled:
+          • Separator run exists, text matches  → no-op
+          • Separator run exists, text differs  → replace its text content
+          • No run after marker, blueprint wants one → insert a bare run with the text
+        Only acts when schema.footnote_separator was successfully read from the blueprint.
+        """
+        wanted = self.schema.footnote_separator
+        if wanted is None:
+            return  # blueprint had no footnotes; cannot determine convention
+
+        _XML_SPACE_ATTR = "{http://www.w3.org/XML/1998/namespace}space"
+        runs = list(p_elem.findall(qn("w:r")))
+
+        def _make_sep_run(text: str):
+            sep_r = OxmlElement("w:r")
+            t_elem = OxmlElement("w:t")
+            t_elem.text = text
+            if " " in text or "\t" in text:
+                t_elem.set(_XML_SPACE_ATTR, "preserve")
+            sep_r.append(t_elem)
+            return sep_r
+
+        for ri, r_elem in enumerate(runs):
+            if not _xpath(r_elem, ".//w:footnoteRef"):
+                continue
+
+            if ri + 1 < len(runs):
+                next_r = runs[ri + 1]
+                t_elems = next_r.findall(qn("w:t"))
+                current = "".join(t.text or "" for t in t_elems)
+                is_sep_run = current.strip() == ""  # purely whitespace = separator run
+
+                if is_sep_run:
+                    if wanted == "":
+                        # Blueprint has no separator — clear the whitespace run
+                        for t in t_elems:
+                            t.text = ""
+                        logger.debug("[BUILD] Footnote separator cleared")
+                    elif current != wanted:
+                        # Replace whitespace content with the blueprint's separator
+                        if t_elems:
+                            t_elems[0].text = wanted
+                            if " " in wanted or "\t" in wanted:
+                                t_elems[0].set(_XML_SPACE_ATTR, "preserve")
+                            for t in t_elems[1:]:
+                                t.text = ""
+                        else:
+                            t_elem = OxmlElement("w:t")
+                            t_elem.text = wanted
+                            if " " in wanted or "\t" in wanted:
+                                t_elem.set(_XML_SPACE_ATTR, "preserve")
+                            next_r.append(t_elem)
+                        logger.debug(
+                            "[BUILD] Footnote separator: %r → %r", current, wanted
+                        )
+                    # else: already matches — no-op
+                else:
+                    # Next run is actual footnote text, not a separator run.
+                    if wanted:
+                        # Blueprint uses a separator — insert a new run before the text
+                        next_r.addprevious(_make_sep_run(wanted))
+                        logger.debug(
+                            "[BUILD] Footnote separator inserted before text: %r", wanted
+                        )
+                    # else: blueprint has no separator either — nothing to do
+            elif wanted:
+                # No run at all after the marker — insert a new separator run
+                r_elem.addnext(_make_sep_run(wanted))
+                logger.debug("[BUILD] Footnote separator run appended: %r", wanted)
+            break  # found the footnoteRef; done
 
 
 # ============================================================================

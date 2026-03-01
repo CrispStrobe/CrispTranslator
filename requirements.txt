@@ -1,0 +1,13 @@
+gradio
+python-docx
+lxml
+torch
+ctranslate2
+transformers
+huggingface_hub
+tqdm
+simalign
+openai
+anthropic
+fastapi-poe
+requests
