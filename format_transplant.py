@@ -2345,39 +2345,52 @@ def extract_blueprint_text(doc: Document, max_chars: int = 40_000) -> str:
 # ============================================================================
 
 _SG_SYSTEM = """\
-You are an expert scholarly editor analysing a document to derive its editorial style guide.
-Your output will be used as a precise instruction set for reformatting the text of a companion document.
+You are an expert scholarly editor and citation specialist deriving a comprehensive editorial style guide from a document.
+Your output must be a precise instruction set for reformatting text to match this document's exact standards.
 
-Study every formatting pattern you can observe in the excerpt: how names are treated, how foreign-language
-terms are handled, how citations are formatted, which punctuation conventions are used, how quotation
-marks are chosen, how headings are structured, and any other recurring editorial rule.
+USER PRIORITY RULE:
+If the user provides supplementary style information, those rules take ABSOLUTE PRECEDENCE over patterns you observe in the excerpt.
 
-Write the style guide as INSTRUCTIONS TO YOURSELF — precise, actionable rules in the imperative mood.
+MANDATORY AREAS OF ANALYSIS:
+1. CITATION STYLE: Meticulously analyze footnote citations. Identify patterns for:
+   - Book/article titles (italic? quotes?)
+   - Author names (Full name? Surname? All caps? Roman?)
+   - Volume/Issue/Page notation (S. 12? p. 12? 12-15? 12f?)
+   - Punctuation between components (Commas? Colons? Slashes?)
+   - Repeated citations (Vgl.? See? Ibid.? ebenda?)
+2. PUNCTUATION & SYMBOLS: Identify specific choices for:
+   - Quotation marks (»...«, „...“, "...", '...')
+   - Dashes (— em-dash, – en-dash)
+   - Spaces before/after symbols
+3. NAMES & TERMS: Identify treatment of personal names, institutional names, and foreign terms.
+
+Write the style guide as actionable, imperative rules (e.g., "Always use...", "Never italicize...").
 """
 
 _SG_USER_TMPL = """\
-Below is an excerpt from the **blueprint document**. Analyse its editorial conventions carefully.
+Below is a comprehensive excerpt from the **blueprint document**, including sampled footnotes. 
+Analyse its editorial conventions with extreme care.
 
-DOCUMENT EXCERPT:
+DOCUMENT EXCERPT (Body & Footnotes):
 ──────────────────────────────────────────────────
 {blueprint_text}
 ──────────────────────────────────────────────────
 {extra_section}
-Produce a **STYLE GUIDE** in Markdown. It must cover, at minimum:
 
-1. **Language & register** — formal/informal, which languages appear, multilingual conventions
-2. **Personal names** — italic or not, how introduced (full name on first occurrence, surname thereafter, etc.)
-3. **Institutional & place names** — treatment, abbreviations
-4. **Foreign-language terms** — each language present: italic? quotation marks? transliteration system?
-   (e.g. "Arabic terms in DMG transliteration, always italic"; "Latin phrases italic"; "French loan words roman")
-5. **Inline emphasis** — when to use *italic* vs **bold**, what categories of content receive each
-6. **Quotation marks** — which style: "…" vs '…' vs «…» vs „…" — and in which contexts
-7. **Citations in footnotes** — author-title format, edition notation, page references
-8. **Heading conventions** — capitalisation, numbering if any
-9. **Any other observable rule**
+Produce a **MASTER STYLE GUIDE** in Markdown. 
 
-Write each rule as a precise instruction: "Always italicise…", "Use „…" for German quotations…", etc.
-Aim for completeness — the guide must be self-sufficient for a human editor who has never seen the blueprint.
+CRITICAL: Your guide must be detailed enough to handle complex academic citations and specific punctuation (like »...« quotation marks) without ambiguity.
+
+Structure your guide:
+1. **Absolute User Overrides** (Include any rules from the 'Additional information' section here first)
+2. **Language & Register**
+3. **Personal & Institutional Names**
+4. **Foreign-Language Terms & Transliteration**
+5. **Inline Emphasis & Special Symbols** (Meticulously specify quotation marks: » vs „ vs ")
+6. **Footnote & Citation System** (Provide specific templates for books, articles, and repeats)
+7. **Heading & Layout Conventions**
+
+Aim for scholarly perfection.
 """
 
 

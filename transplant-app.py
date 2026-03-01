@@ -126,6 +126,7 @@ def run_transplant(
     llm_api_key: str,
     llm_mode: str,
     styleguide_in_file: Optional[str],
+    styleguide_out_name: str,
     extra_styleguide_files,          # list[str] | None from gr.File(file_count="multiple")
     llm_batch_size: int,
     llm_context_chars: int,
@@ -173,7 +174,11 @@ def run_transplant(
     temp_dir = Path(tempfile.mkdtemp())
     output_filename = f"{source_path.stem}_transplanted.docx" if source_path else "transplanted.docx"
     output_path = temp_dir / output_filename
-    styleguide_out_path = temp_dir / "styleguide.md"
+    
+    sg_out_name = styleguide_out_name.strip() or "styleguide.md"
+    if not sg_out_name.endswith(".md"):
+        sg_out_name += ".md"
+    styleguide_out_path = temp_dir / sg_out_name
 
     # ── Log capture ───────────────────────────────────────────────────
     log_records: list = []
@@ -509,6 +514,11 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
                     file_types=[".md", ".txt"],
                     type="filepath",
                 )
+                styleguide_out_name = gr.Textbox(
+                    label="Save generated style guide as...",
+                    placeholder="e.g. my_styleguide.md",
+                    info="Leave blank to not save. File will be in the same folder as output or temp.",
+                )
                 extra_styleguides = gr.File(
                     label="Extra style guide files  (optional, multiple)",
                     file_types=[".md", ".txt", ".pdf"],
@@ -615,6 +625,7 @@ and add an override.
                 llm_api_key,
                 llm_mode,
                 styleguide_in,
+                styleguide_out_name,
                 extra_styleguides,
                 llm_batch_size,
                 llm_context_chars,
