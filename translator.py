@@ -453,7 +453,13 @@ class LLMTranslator:
     def __init__(self, src_lang: str, tgt_lang: str, preferred_provider: Optional[str] = None, preferred_model: Optional[str] = None):
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
-        self.providers = self._init_providers(preferred_provider, preferred_model)
+        
+        # Resolve 'auto' or 'default' to None
+        model_val = preferred_model
+        if model_val and model_val.lower() in ("auto", "default", ""):
+            model_val = None
+            
+        self.providers = self._init_providers(preferred_provider, model_val)
         
         if self.providers:
             logger.info(f"✓ LLM available ({list(self.providers.keys())})")

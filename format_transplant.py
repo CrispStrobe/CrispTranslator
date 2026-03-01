@@ -335,9 +335,15 @@ def llm_config_from_args(
             f"No API key for provider '{provider_str}'. "
             f"Set env var {defaults.get('env', '?')} or pass --llm-key."
         )
+    
+    # Handle 'auto' or 'default' markers from UI/CLI
+    resolved_model = model
+    if resolved_model and resolved_model.lower() in ("auto", "default"):
+        resolved_model = None
+        
     return LLMConfig(
         provider=LLMProvider(provider_str),
-        model=model or defaults.get("model", ""),
+        model=resolved_model or defaults.get("model", ""),
         api_key=resolved_key,
         base_url=defaults.get("base_url"),
     )

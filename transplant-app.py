@@ -32,6 +32,7 @@ try:
     from format_transplant import (
         FormatTransplanter,
         LLMFormatTransplanter,
+        MultiProviderLLMClient,
         PROVIDER_DEFAULTS,
         llm_config_from_args,
     )
@@ -198,9 +199,14 @@ def run_transplant(
             # ── Build LLM config ──────────────────────────────────────
             progress(0.10, desc="Initialising LLM client…")
 
+            # Resolve 'auto' or 'default' to None so llm_config_from_args uses provider default
+            model_val = llm_model.strip()
+            if model_val.lower() in ("auto", "default", ""):
+                model_val = None
+
             llm_cfg = llm_config_from_args(
                 provider_str=llm_provider,
-                model=llm_model.strip() or None,
+                model=model_val,
                 api_key=llm_api_key.strip() or None,
             )
             llm_cfg.para_batch_size        = int(llm_batch_size)
