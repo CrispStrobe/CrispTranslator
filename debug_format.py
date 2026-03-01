@@ -811,8 +811,8 @@ def cmd_xml(args):
 
     names = zip_names(path)
 
-    # Fuzzy match if exact not found
-    if part not in names:
+    # Fuzzy match if exact not found and not requested
+    if part not in names and not getattr(args, "exact", False):
         candidates = [n for n in names if part in n]
         if len(candidates) == 1:
             part = candidates[0]
@@ -827,6 +827,9 @@ def cmd_xml(args):
             for n in sorted(names):
                 print(f"  {n}")
             return
+    elif part not in names:
+        print(f"Part '{part}' not found in {path} (exact match required).")
+        return
 
     raw = zip_read(path, part)
 
@@ -918,6 +921,8 @@ def main() -> int:
     p_xml.add_argument("part", help="ZIP entry path, e.g. word/styles.xml")
     p_xml.add_argument("--strip-ns", action="store_true",
                        help="Remove xmlns:* declarations for readability")
+    p_xml.add_argument("--exact", action="store_true",
+                       help="Require exact ZIP entry path match")
     p_xml.set_defaults(func=cmd_xml)
 
     args = parser.parse_args()

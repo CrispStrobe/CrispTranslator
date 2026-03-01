@@ -1793,6 +1793,11 @@ class DocumentBuilder:
                         for r in list(p_elem.findall(qn("w:r"))):
                             if r not in marker_runs:
                                 p_elem.remove(r)
+                        
+                        # Apply blueprint marker formatting to the preserved marker runs
+                        for r_marker in marker_runs:
+                            self._apply_fn_ref_style(r_marker)
+
                         for rd in parse_md_runs(llm_text):
                             if not rd.text:
                                 continue
