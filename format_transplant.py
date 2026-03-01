@@ -313,16 +313,71 @@ class LLMProvider(Enum):
 
 
 # Per-provider defaults — base_url=None means the provider uses its own SDK
+# Added top 5 fallback models for each provider
 PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
-    "openai":     {"base_url": "https://api.openai.com/v1",           "env": "OPENAI_API_KEY",    "model": "gpt-4o", "batch_size": 15},
-    "anthropic":  {"base_url": None,                                   "env": "ANTHROPIC_API_KEY", "model": "claude-3-5-sonnet-20241022", "batch_size": 15},
-    "groq":       {"base_url": "https://api.groq.com/openai/v1",      "env": "GROQ_API_KEY",      "model": "llama-3.3-70b-versatile", "batch_size": 5},
-    "nebius":     {"base_url": "https://api.studio.nebius.com/v1",    "env": "NEBIUS_API_KEY",    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct", "batch_size": 15},
-    "scaleway":   {"base_url": "https://api.scaleway.ai/v1",          "env": "SCW_SECRET_KEY",    "model": "llama-3.3-70b-instruct", "batch_size": 15},
-    "openrouter": {"base_url": "https://openrouter.ai/api/v1",        "env": "OPENROUTER_API_KEY","model": "meta-llama/llama-3.3-70b-instruct", "batch_size": 15},
-    "mistral":    {"base_url": "https://api.mistral.ai/v1",           "env": "MISTRAL_API_KEY",   "model": "mistral-large-latest", "batch_size": 15},
-    "poe":        {"base_url": None,                                   "env": "POE_API_KEY",       "model": "Claude-3.7-Sonnet", "batch_size": 15},
-    "ollama":     {"base_url": "http://localhost:11434/api",          "env": "OLLAMA_API_KEY",    "model": "llama3.2", "batch_size": 15},
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "env": "OPENAI_API_KEY",
+        "model": "gpt-4o",
+        "fallbacks": ["gpt-4o-2024-08-06", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+        "batch_size": 15
+    },
+    "anthropic": {
+        "base_url": None,
+        "env": "ANTHROPIC_API_KEY",
+        "model": "claude-3-7-sonnet-20250219",
+        "fallbacks": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-2.1"],
+        "batch_size": 15
+    },
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "env": "GROQ_API_KEY",
+        "model": "llama-3.3-70b-versatile",
+        "fallbacks": ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
+        "batch_size": 5
+    },
+    "nebius": {
+        "base_url": "https://api.studio.nebius.ai/v1",
+        "env": "NEBIUS_API_KEY",
+        "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        "fallbacks": ["meta-llama/Meta-Llama-3.1-8B-Instruct", "meta-llama/Llama-Guard-3-8B"],
+        "batch_size": 15
+    },
+    "scaleway": {
+        "base_url": "https://api.scaleway.ai/v1",
+        "env": "SCALEWAY_API_KEY", # Updated to match .env
+        "model": "llama-3.3-70b-instruct",
+        "fallbacks": ["deepseek-r1-distill-llama-70b", "llama-3.1-8b-instruct", "mistral-nemo-instruct-2407", "pixtral-12b-2409"],
+        "batch_size": 15
+    },
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        "env": "OPENROUTER_API_KEY",
+        "model": "meta-llama/llama-3.3-70b-instruct",
+        "fallbacks": ["anthropic/claude-3.5-sonnet", "google/gemini-pro-1.5", "mistralai/mistral-large", "qwen/qwen-2.5-72b-instruct"],
+        "batch_size": 15
+    },
+    "mistral": {
+        "base_url": "https://api.mistral.ai/v1",
+        "env": "MISTRAL_API_KEY",
+        "model": "mistral-large-latest",
+        "fallbacks": ["mistral-medium-latest", "mistral-small-latest", "codestral-latest", "open-mistral-nemo"],
+        "batch_size": 15
+    },
+    "poe": {
+        "base_url": None,
+        "env": "POE_API_KEY",
+        "model": "Claude-3.7-Sonnet",
+        "fallbacks": ["Claude-3.5-Sonnet", "GPT-4o", "Claude-3-Opus", "Llama-3.1-405B"],
+        "batch_size": 15
+    },
+    "ollama": {
+        "base_url": "http://localhost:11434/api",
+        "env": "OLLAMA_API_KEY",
+        "model": "llama3.2",
+        "fallbacks": ["llama3.1", "mistral", "phi3", "qwen2.5"],
+        "batch_size": 15
+    },
 }
 
 
@@ -342,6 +397,7 @@ class LLMConfig:
     # Retry settings
     max_retries: int = 5
     retry_delay_s: float = 5.0
+    fallback_models: List[str] = field(default_factory=list)
 
 
 def llm_config_from_args(
@@ -370,6 +426,7 @@ def llm_config_from_args(
         api_key=resolved_key,
         base_url=defaults.get("base_url"),
         para_batch_size=defaults.get("batch_size", 15),
+        fallback_models=defaults.get("fallbacks", []),
     )
 
 
@@ -2011,54 +2068,72 @@ class MultiProviderLLMClient:
 
     def complete(self, system: str, user: str, config: LLMConfig) -> str:
         """Send a chat completion and return the assistant's text."""
-        for attempt in range(1, config.max_retries + 1):
-            try:
-                if config.provider == LLMProvider.ANTHROPIC:
-                    return self._anthropic(system, user, config)
-                elif config.provider == LLMProvider.POE:
-                    return self._poe(system, user, config)
-                elif config.provider == LLMProvider.OLLAMA:
-                    return self._ollama(system, user, config)
-                else:
-                    return self._openai_compat(system, user, config)
-            except Exception as exc:
-                is_rate_limit = False
-                header_delay = None
-                
-                # Try to extract retry-after from common SDK exceptions
-                exc_str = str(exc).lower()
-                if "429" in exc_str or "rate limit" in exc_str:
-                    is_rate_limit = True
+        # Candidate models list: primary model followed by fallbacks
+        models_to_try = [config.model] + config.fallback_models
+        
+        last_exception = None
+        
+        for model_id in models_to_try:
+            current_config = copy.copy(config)
+            current_config.model = model_id
+            
+            logger.info("[LLM] %s: Trying model '%s'...", config.provider.value, model_id)
+            
+            for attempt in range(1, config.max_retries + 1):
+                try:
+                    if config.provider == LLMProvider.ANTHROPIC:
+                        return self._anthropic(system, user, current_config)
+                    elif config.provider == LLMProvider.POE:
+                        return self._poe(system, user, current_config)
+                    elif config.provider == LLMProvider.OLLAMA:
+                        return self._ollama(system, user, current_config)
+                    else:
+                        return self._openai_compat(system, user, current_config)
+                except Exception as exc:
+                    last_exception = exc
+                    exc_str = str(exc).lower()
+                    is_rate_limit = "429" in exc_str or "rate limit" in exc_str
+                    is_model_not_found = "404" in exc_str or "not found" in exc_str or "does not exist" in exc_str
                     
-                # OpenAI / Groq / OpenRouter often put it in headers
-                if hasattr(exc, "response") and hasattr(exc.response, "headers"):
-                    retry_after = exc.response.headers.get("retry-after")
-                    if retry_after and retry_after.isdigit():
-                        header_delay = float(retry_after)
-                
-                # Exponential backoff: retry_delay * (2 ^ (attempt-1))
-                delay = config.retry_delay_s * (2 ** (attempt - 1))
-                
-                if header_delay:
-                    delay = max(delay, header_delay + 1.0) # Add 1s buffer
-                elif is_rate_limit:
-                    delay *= 2 # Extra patience for rate limits
-                
-                if is_rate_limit:
-                    logger.warning(
-                        "[LLM] %s rate limited (429). Waiting %.1f seconds... (Attempt %d/%d)",
-                        config.provider.value, delay, attempt, config.max_retries
-                    )
-                else:
-                    logger.warning(
-                        "[LLM] %s attempt %d/%d failed: %s",
-                        config.provider.value, attempt, config.max_retries, exc,
-                    )
-                
-                if attempt < config.max_retries:
-                    time.sleep(delay)
+                    if is_model_not_found:
+                        logger.warning("[LLM] %s: Model '%s' not found. Trying next fallback...", 
+                                       config.provider.value, model_id)
+                        break # Exit attempt loop, try next model
+                    
+                    # Exponential backoff: retry_delay * (2 ^ (attempt-1))
+                    delay = config.retry_delay_s * (2 ** (attempt - 1))
+                    header_delay = None
+                    
+                    # OpenAI / Groq / OpenRouter often put it in headers
+                    if hasattr(exc, "response") and hasattr(exc.response, "headers"):
+                        retry_after = exc.response.headers.get("retry-after")
+                        if retry_after and retry_after.isdigit():
+                            header_delay = float(retry_after)
+                    
+                    if header_delay:
+                        delay = max(delay, header_delay + 1.0) # Add 1s buffer
+                    elif is_rate_limit:
+                        delay *= 2 # Extra patience for rate limits
+                    
+                    if is_rate_limit:
+                        logger.warning(
+                            "[LLM] %s rate limited (429) for model '%s'. Waiting %.1f seconds... (Attempt %d/%d)",
+                            config.provider.value, model_id, delay, attempt, config.max_retries
+                        )
+                    else:
+                        logger.warning(
+                            "[LLM] %s model '%s' attempt %d/%d failed: %s",
+                            config.provider.value, model_id, attempt, config.max_retries, exc,
+                        )
+                    
+                    if attempt < config.max_retries:
+                        time.sleep(delay)
+                    else:
+                        logger.error("[LLM] %s: All retries failed for model '%s'.", 
+                                     config.provider.value, model_id)
+            
         raise RuntimeError(
-            f"[LLM] All {config.max_retries} attempts failed for {config.provider.value}"
+            f"[LLM] All models and retries failed for {config.provider.value}. Last error: {last_exception}"
         )
 
     def get_available_models(self, config: LLMConfig) -> List[Dict[str, Any]]:
@@ -2485,21 +2560,20 @@ def parse_md_runs(text: str) -> List["RunData"]:
 
 _FMT_SYSTEM = """\
 You are a scholarly editor applying a strict editorial style guide to existing text.
-Your ONLY task is to apply inline formatting (bold/italic) to the text provided.
+Your task is to re-format the provided text to match the Style Guide's exact conventions.
 
-CRITICAL CONSTRAINTS:
-1. DO NOT translate the text.
-2. DO NOT paraphrase or summarize the text.
-3. DO NOT add any introductory remarks, commentary, or conclusions.
-4. DO NOT change a single word or punctuation mark of the original text.
-5. REPRODUCE the text EXACTLY as given, only adding Markdown markers for formatting.
+CONSTRAINTS:
+1. SUBSTANTIVE VERBATIM: Do NOT change the substantive meaning, names, or titles. 
+2. EDITORIAL RE-FORMATTING: You MUST change punctuation, quotation marks, and citation structure (e.g., brackets vs commas, colons vs spaces) to strictly follow the Style Guide.
+3. DO NOT translate, summarize, or paraphrase.
+4. DO NOT add any introductory remarks or commentary.
 
 Use Markdown for inline formatting:
   *italic*          for italic text
   **bold**          for bold text
   ***bold italic*** for bold + italic
-No other Markdown (no # headings, no lists). Return plain paragraph text with inline markers only.
-Return EXACTLY one formatted response for each input paragraph.
+No other Markdown. Return only the re-formatted paragraph text.
+Return EXACTLY one response for each input paragraph.
 """
 
 _PARA_USER_TMPL = """\
