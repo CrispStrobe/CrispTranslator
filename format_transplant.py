@@ -748,15 +748,25 @@ class BlueprintAnalyzer:
 
                     # ── Separator after marker ────────────────────────────
                     # A separator run is one whose ENTIRE text content is
-                    # whitespace (tab, space, or empty). If the next run has
-                    # actual content, this footnote has no dedicated separator
-                    # run — skip it and try the next footnote.
+                    # whitespace (tab, space, or empty) OR contains a <w:tab/>.
+                    # If the next run has actual content, this footnote has no
+                    # dedicated separator run — skip it and try the next footnote.
                     if not sep_found:
                         if ri + 1 < len(runs):
                             next_r = runs[ri + 1]
+                            has_tab = next_r.find(qn("w:tab")) is not None
                             t_elems = next_r.findall(qn("w:t"))
                             sep_text = "".join(t.text or "" for t in t_elems)
-                            if sep_text.strip() == "":
+                            
+                            if has_tab:
+                                # Prioritize physical tab element over text
+                                schema.footnote_separator = "\t"
+                                sep_found = True
+                                logger.debug(
+                                    "[BLUEPRINT] Footnote separator: <w:tab/> (fn id=%d)",
+                                    fn_id,
+                                )
+                            elif sep_text.strip() == "":
                                 # Pure whitespace → this IS the separator run
                                 schema.footnote_separator = sep_text
                                 sep_found = True
@@ -1856,12 +1866,12 @@ class DocumentBuilder:
     def _normalize_fn_separator(self, p_elem: Any) -> None:
         """
         Ensure the run immediately after <w:footnoteRef> carries the same
-        separator text as the blueprint's footnotes (tab, space, or nothing).
+        separator text or tab element as the blueprint's footnotes.
 
         Three cases handled:
-          • Separator run exists, text matches  → no-op
-          • Separator run exists, text differs  → replace its text content
-          • No run after marker, blueprint wants one → insert a bare run with the text
+          • Separator run exists, content matches → no-op
+          • Separator run exists, content differs → replace its content
+          • No run after marker, blueprint wants one → insert a new run
         Only acts when schema.footnote_separator was successfully read from the blueprint.
         """
         wanted = self.schema.footnote_separator
@@ -1873,11 +1883,14 @@ class DocumentBuilder:
 
         def _make_sep_run(text: str):
             sep_r = OxmlElement("w:r")
-            t_elem = OxmlElement("w:t")
-            t_elem.text = text
-            if " " in text or "\t" in text:
-                t_elem.set(_XML_SPACE_ATTR, "preserve")
-            sep_r.append(t_elem)
+            if text == "\t":
+                sep_r.append(OxmlElement("w:tab"))
+            else:
+                t_elem = OxmlElement("w:t")
+                t_elem.text = text
+                if " " in text:
+                    t_elem.set(_XML_SPACE_ATTR, "preserve")
+                sep_r.append(t_elem)
             return sep_r
 
         for ri, r_elem in enumerate(runs):
@@ -1886,34 +1899,44 @@ class DocumentBuilder:
 
             if ri + 1 < len(runs):
                 next_r = runs[ri + 1]
+                has_tab = next_r.find(qn("w:tab")) is not None
                 t_elems = next_r.findall(qn("w:t"))
-                current = "".join(t.text or "" for t in t_elems)
-                is_sep_run = current.strip() == ""  # purely whitespace = separator run
+                current_text = "".join(t.text or "" for t in t_elems)
+                
+                # A run is a separator run if it has a tab OR is purely whitespace text
+                is_sep_run = has_tab or current_text.strip() == ""
 
                 if is_sep_run:
+                    # Decide if current content matches 'wanted'
+                    # (Note: we treat any existing tab element as equivalent to wanted="\t")
+                    matches = (has_tab and wanted == "\t") or (not has_tab and current_text == wanted)
+
                     if wanted == "":
-                        # Blueprint has no separator — clear the whitespace run
-                        for t in t_elems:
-                            t.text = ""
+                        # Blueprint has no separator — clear the run's content
+                        for child in list(next_r):
+                            if child.tag in (qn("w:t"), qn("w:tab")):
+                                next_r.remove(child)
                         logger.debug("[BUILD] Footnote separator cleared")
-                    elif current != wanted:
-                        # Replace whitespace content with the blueprint's separator
-                        if t_elems:
-                            t_elems[0].text = wanted
-                            if " " in wanted or "\t" in wanted:
-                                t_elems[0].set(_XML_SPACE_ATTR, "preserve")
-                            for t in t_elems[1:]:
-                                t.text = ""
+                    elif not matches:
+                        # Replace all existing content with the blueprint's separator
+                        for child in list(next_r):
+                            if child.tag in (qn("w:t"), qn("w:tab")):
+                                next_r.remove(child)
+                        
+                        if wanted == "\t":
+                            next_r.append(OxmlElement("w:tab"))
                         else:
                             t_elem = OxmlElement("w:t")
                             t_elem.text = wanted
-                            if " " in wanted or "\t" in wanted:
+                            if " " in wanted:
                                 t_elem.set(_XML_SPACE_ATTR, "preserve")
                             next_r.append(t_elem)
                         logger.debug(
-                            "[BUILD] Footnote separator: %r → %r", current, wanted
+                            "[BUILD] Footnote separator: %r → %r", 
+                            ("<w:tab/>" if has_tab else current_text), 
+                            wanted
                         )
-                    # else: already matches — no-op
+                    # else: matches — no-op
                 else:
                     # Next run is actual footnote text, not a separator run.
                     if wanted:

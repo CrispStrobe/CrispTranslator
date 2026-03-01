@@ -327,13 +327,6 @@ def create_interface() -> gr.Blocks:
 
 Apply the **complete formatting** of a blueprint document to the **content** of a source document — down to paragraph styles, page layout, margins, headers, footers, and footnotes.
 Optionally run an **LLM style pass** that learns editorial conventions from the blueprint and re-formats source paragraphs and footnotes accordingly.
-
-| What comes from the **blueprint** | What comes from the **source** |
-|---|---|
-| Page size, margins, section layout | All body text |
-| All style definitions (fonts, indents, spacing) | Bold / italic / underline of runs |
-| Headers & footers | Tables (with remapped styles) |
-| Footnote formatting | Footnote text content |
 """)
 
         with gr.Row():
@@ -533,6 +526,15 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
         # ── Help / docs ────────────────────────────────────────────────
         with gr.Accordion("How it works", open=False):
             gr.Markdown("""
+### Data Sources
+
+| What comes from the **blueprint** | What comes from the **source** |
+|---|---|
+| Page size, margins, section layout | All body text |
+| All style definitions (fonts, indents, spacing) | Bold / italic / underline of runs |
+| Headers & footers | Tables (with remapped styles) |
+| Footnote formatting | Footnote text content |
+
 ### Structural pipeline (always runs)
 
 1. **Blueprint analysis** — reads every section (margins, page size, header/footer distance) and
