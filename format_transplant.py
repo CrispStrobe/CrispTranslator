@@ -374,8 +374,8 @@ PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "ollama": {
         "base_url": "http://localhost:11434/api",
         "env": "OLLAMA_API_KEY",
-        "model": "ministral-3b-instruct-2512-q4_K_M",
-        "fallbacks": ["cas/llama-3.2-3b-instruct:latest", "llama3.2", "mistral", "phi3"],
+        "model": "ministral:3b-instruct-2512-q4_K_M",
+        "fallbacks": ["cas/llama-3.2-3b-instruct:latest", "llama3.2:latest", "mistral:latest", "phi3:latest"],
         "batch_size": 15
     },
 }
@@ -408,11 +408,15 @@ def llm_config_from_args(
     """Build an LLMConfig from CLI/UI inputs, filling defaults from PROVIDER_DEFAULTS."""
     import os
     defaults = PROVIDER_DEFAULTS.get(provider_str, {})
-    resolved_key = api_key or os.getenv(defaults.get("env", ""), "")
-    if not resolved_key:
+    
+    # Resolve key: from args, then env, then fallback to empty for Ollama
+    env_var = defaults.get("env", "")
+    resolved_key = api_key or os.getenv(env_var, "")
+    
+    if not resolved_key and provider_str != "ollama":
         raise ValueError(
             f"No API key for provider '{provider_str}'. "
-            f"Set env var {defaults.get('env', '?')} or pass --llm-key."
+            f"Set env var {env_var or '?'} or pass --llm-key."
         )
     
     # Handle 'auto' or 'default' markers from UI/CLI
@@ -423,7 +427,7 @@ def llm_config_from_args(
     return LLMConfig(
         provider=LLMProvider(provider_str),
         model=resolved_model or defaults.get("model", ""),
-        api_key=resolved_key,
+        api_key=resolved_key or "no-key-needed",
         base_url=defaults.get("base_url"),
         para_batch_size=defaults.get("batch_size", 15),
         fallback_models=defaults.get("fallbacks", []),

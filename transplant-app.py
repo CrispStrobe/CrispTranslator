@@ -175,7 +175,7 @@ def run_transplant(
     output_filename = f"{source_path.stem}_transplanted.docx" if source_path else "transplanted.docx"
     output_path = temp_dir / output_filename
     
-    sg_out_name = styleguide_out_name.strip() or "styleguide.md"
+    sg_out_name = (styleguide_out_name or "").strip() or "styleguide.md"
     if not sg_out_name.endswith(".md"):
         sg_out_name += ".md"
     styleguide_out_path = temp_dir / sg_out_name
