@@ -515,14 +515,20 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
                     file_count="multiple",
                 )
 
-            # Auto-fill default model when provider changes
+            # Auto-fill default model and batch size when provider changes
             def _on_provider_change(provider):
-                return _default_model_for_provider(provider)
+                if provider == "(none)":
+                    return gr.update(value="auto"), gr.update(value=15)
+                
+                defaults = PROVIDER_DEFAULTS.get(provider, {})
+                model = defaults.get("model", "auto")
+                batch = defaults.get("batch_size", 15)
+                return gr.update(value=model), gr.update(value=batch)
 
             llm_provider.change(
                 fn=_on_provider_change,
                 inputs=[llm_provider],
-                outputs=[llm_model],
+                outputs=[llm_model, llm_batch_size],
             )
 
         # ── System status ──────────────────────────────────────────────

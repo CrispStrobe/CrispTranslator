@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import copy
 import logging
+import os
 import re
 import shutil
 import sys
@@ -92,6 +93,28 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("FormatTransplant")
+
+def load_dotenv(path: Optional[Path] = None):
+    """Simple .env loader to avoid extra dependencies."""
+    env_path = path or Path(".env")
+    if not env_path.exists():
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    # Strip quotes if present
+                    value = value.strip().strip('"').strip("'")
+                    os.environ[key.strip()] = value
+    except Exception as e:
+        logger.warning(f"Failed to load .env: {e}")
+
+# Load environment early
+load_dotenv()
 
 # ============================================================================
 # SEMANTIC CLASSIFICATION CONSTANTS
@@ -291,15 +314,15 @@ class LLMProvider(Enum):
 
 # Per-provider defaults — base_url=None means the provider uses its own SDK
 PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
-    "openai":     {"base_url": "https://api.openai.com/v1",           "env": "OPENAI_API_KEY",    "model": "gpt-4o"},
-    "anthropic":  {"base_url": None,                                   "env": "ANTHROPIC_API_KEY", "model": "claude-3-5-sonnet-20241022"},
-    "groq":       {"base_url": "https://api.groq.com/openai/v1",      "env": "GROQ_API_KEY",      "model": "llama-3.3-70b-versatile"},
-    "nebius":     {"base_url": "https://api.studio.nebius.com/v1",    "env": "NEBIUS_API_KEY",    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct"},
-    "scaleway":   {"base_url": "https://api.scaleway.ai/v1",          "env": "SCW_SECRET_KEY",    "model": "llama-3.3-70b-instruct"},
-    "openrouter": {"base_url": "https://openrouter.ai/api/v1",        "env": "OPENROUTER_API_KEY","model": "meta-llama/llama-3.3-70b-instruct"},
-    "mistral":    {"base_url": "https://api.mistral.ai/v1",           "env": "MISTRAL_API_KEY",   "model": "mistral-large-latest"},
-    "poe":        {"base_url": None,                                   "env": "POE_API_KEY",       "model": "Claude-3.7-Sonnet"},
-    "ollama":     {"base_url": "http://localhost:11434/api",          "env": "OLLAMA_API_KEY",    "model": "llama3.2"},
+    "openai":     {"base_url": "https://api.openai.com/v1",           "env": "OPENAI_API_KEY",    "model": "gpt-4o", "batch_size": 15},
+    "anthropic":  {"base_url": None,                                   "env": "ANTHROPIC_API_KEY", "model": "claude-3-5-sonnet-20241022", "batch_size": 15},
+    "groq":       {"base_url": "https://api.groq.com/openai/v1",      "env": "GROQ_API_KEY",      "model": "llama-3.3-70b-versatile", "batch_size": 5},
+    "nebius":     {"base_url": "https://api.studio.nebius.com/v1",    "env": "NEBIUS_API_KEY",    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct", "batch_size": 15},
+    "scaleway":   {"base_url": "https://api.scaleway.ai/v1",          "env": "SCW_SECRET_KEY",    "model": "llama-3.3-70b-instruct", "batch_size": 15},
+    "openrouter": {"base_url": "https://openrouter.ai/api/v1",        "env": "OPENROUTER_API_KEY","model": "meta-llama/llama-3.3-70b-instruct", "batch_size": 15},
+    "mistral":    {"base_url": "https://api.mistral.ai/v1",           "env": "MISTRAL_API_KEY",   "model": "mistral-large-latest", "batch_size": 15},
+    "poe":        {"base_url": None,                                   "env": "POE_API_KEY",       "model": "Claude-3.7-Sonnet", "batch_size": 15},
+    "ollama":     {"base_url": "http://localhost:11434/api",          "env": "OLLAMA_API_KEY",    "model": "llama3.2", "batch_size": 15},
 }
 
 
@@ -346,6 +369,7 @@ def llm_config_from_args(
         model=resolved_model or defaults.get("model", ""),
         api_key=resolved_key,
         base_url=defaults.get("base_url"),
+        para_batch_size=defaults.get("batch_size", 15),
     )
 
 
@@ -1993,12 +2017,24 @@ class MultiProviderLLMClient:
                 else:
                     return self._openai_compat(system, user, config)
             except Exception as exc:
-                logger.warning(
-                    "[LLM] %s attempt %d/%d failed: %s",
-                    config.provider.value, attempt, config.max_retries, exc,
-                )
+                is_rate_limit = "429" in str(exc) or "rate limit" in str(exc).lower()
+                
+                # Exponential backoff: retry_delay * (2 ^ (attempt-1))
+                delay = config.retry_delay_s * (2 ** (attempt - 1))
+                if is_rate_limit:
+                    delay *= 2 # Extra patience for rate limits
+                    logger.warning(
+                        "[LLM] %s rate limited (429). Waiting %.1f seconds...",
+                        config.provider.value, delay
+                    )
+                else:
+                    logger.warning(
+                        "[LLM] %s attempt %d/%d failed: %s",
+                        config.provider.value, attempt, config.max_retries, exc,
+                    )
+                
                 if attempt < config.max_retries:
-                    time.sleep(config.retry_delay_s)
+                    time.sleep(delay)
         raise RuntimeError(
             f"[LLM] All {config.max_retries} attempts failed for {config.provider.value}"
         )
@@ -2516,6 +2552,14 @@ class LLMContentFormatter:
         )
 
         for batch_start in range(0, len(to_format), config.para_batch_size):
+            # Inter-batch delay to stay under rate limits
+            if batch_start > 0:
+                batch_delay = 2.0 # 2 seconds between batches
+                if config.provider == LLMProvider.GROQ:
+                    batch_delay = 10.0 # Extra delay for Groq (very tight limits)
+                logger.debug("[LLM-FMT] Inter-batch delay: %.1fs", batch_delay)
+                time.sleep(batch_delay)
+
             batch = to_format[batch_start: batch_start + config.para_batch_size]
             texts = [p.get_text() for p in batch]
 

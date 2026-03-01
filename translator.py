@@ -37,6 +37,30 @@ HAS_OPENAI = check_library("OpenAI", "from openai import AsyncOpenAI")
 HAS_ANTHROPIC = check_library("Anthropic", "from anthropic import AsyncAnthropic")
 HAS_SIMALIGN = check_library("simalign", "from simalign import SentenceAligner")
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+def load_dotenv(path: Optional[Path] = None):
+    """Simple .env loader to avoid extra dependencies."""
+    env_path = path or Path(".env")
+    if not env_path.exists():
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    value = value.strip().strip('"').strip("'")
+                    os.environ[key.strip()] = value
+    except Exception as e:
+        logger.warning(f"Failed to load .env: {e}")
+
+# Load environment early
+load_dotenv()
+
 # --- Device & Backend Configuration ---
 def get_torch_device():
     if not HAS_TORCH: return "cpu"
@@ -65,9 +89,6 @@ def check_fast_align():
 HAS_FAST_ALIGN = check_fast_align()
 print(f"  {'✓' if HAS_FAST_ALIGN else '⊘'} fast_align")
 print("-" * 60)
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # ============================================================================
 # ENUMS FOR CONFIGURATION

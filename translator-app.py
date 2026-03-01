@@ -374,6 +374,28 @@ def create_interface():
                     inputs=[llm_provider],
                     outputs=[llm_model]
                 )
+
+                def _on_provider_change(provider):
+                    if provider == "None": return "default"
+                    # Try to get from format_transplant defaults if possible
+                    try:
+                        from format_transplant import PROVIDER_DEFAULTS
+                        return PROVIDER_DEFAULTS.get(provider.lower(), {}).get("model", "default")
+                    except:
+                        # Fallbacks for translator-app specifically
+                        defaults = {
+                            "OpenAI": "gpt-4o-mini",
+                            "Anthropic": "claude-3-5-sonnet-20241022",
+                            "Groq": "llama-3.3-70b-versatile",
+                            "Ollama": "llama3.2"
+                        }
+                        return defaults.get(provider, "default")
+
+                llm_provider.change(
+                    fn=_on_provider_change,
+                    inputs=[llm_provider],
+                    outputs=[llm_model]
+                )
                 
                 translate_btn = gr.Button("🚀 Translate Document", variant="primary", size="lg")
             
