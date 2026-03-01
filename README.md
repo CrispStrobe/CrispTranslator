@@ -1,13 +1,14 @@
 # CrispTranslator
 
-Two complementary tools for working with Word documents at the formatting level:
+Three complementary tools for working with Word documents at the formatting level:
 
 | Tool | What it does |
 |---|---|
 | **Document Translator** | Translate `.docx` files across 200+ languages while preserving all formatting — down to bold/italic on individual words, footnotes, tables, headers, and footers |
 | **Format Transplant** | Apply the complete formatting of a blueprint `.docx` to the content of a different document — page layout, styles, margins, everything — without translating anything |
+| **DOCX Debugger** | Inspect, validate, and compare `.docx` files at the XML level — corruption checks, heading inference, footnote structure, style dumps, and side-by-side comparison |
 
-Both tools operate at the XML level of the OOXML format (`.docx`), preserving structure that higher-level APIs would silently discard.
+All tools operate at the XML level of the OOXML format (`.docx`), preserving structure that higher-level APIs would silently discard.
 
 ---
 
@@ -22,6 +23,8 @@ Both tools operate at the XML level of the OOXML format (`.docx`), preserving st
   - [CLI](#transplant-cli)
   - [Web UI](#transplant-web-ui)
   - [How it works](#how-the-transplant-works)
+- [DOCX Debugger](#docx-debugger)
+  - [Subcommands](#debugger-subcommands)
 - [License](#license)
 
 ---
@@ -233,7 +236,7 @@ The pipeline has four phases:
 
 #### Phase 1 — Blueprint analysis
 
-Every section's page geometry (size, margins, gutter, header/footer distance, orientation) and every style definition is extracted and indexed. Font properties are resolved by walking the style inheritance chain. This produces a `BlueprintSchema` used by all subsequent phases.
+Every section's page geometry (size, margins, gutter, header/footer distance, orientation) and every style definition is extracted and indexed. Font properties are resolved by walking the style inheritance chain. The OOXML `outlineLvl` attribute is read from each style's raw XML to identify heading hierarchy in a language-independent way. The footnote reference character style (the char style applied to superscript footnote markers) is detected and stored for use during footnote transplant. This produces a `BlueprintSchema` used by all subsequent phases.
 
 #### Phase 2 — Content extraction
 
@@ -241,15 +244,18 @@ Source paragraphs are extracted in body order alongside table placeholders (so t
 
 Footnotes are extracted separately: each `<w:footnote>` element is deep-copied for later transplant.
 
+After extraction, a **heading inference pass** runs over all paragraphs to detect headings that exist only as direct formatting (no heading style applied). A paragraph is a heading candidate if it is bold — either through `<w:pPr>/<w:rPr>/<w:b>` (paragraph-default bold) or all text runs explicitly bold — and its text is shorter than 100 characters. Candidates are then clustered by font size descending to assign heading levels: the largest font size maps to H1, the next to H2, and so on. Paragraphs already assigned a heading level from a named style are not reclassified.
+
 #### Phase 3 — Style mapping
 
-Every source style name is resolved to the best blueprint style name:
+Every source style name is resolved to the best blueprint style name. The resolution order is:
 
 1. **User override** — explicit `--style-map` entry
-2. **Exact name match** — identical style names across both documents
-3. **Case-insensitive match** — handles `normal` vs `Normal`
-4. **Semantic class** — heading level 1–9 detected across DE/FR/IT/ES/RU/ZH/PL/SE/EN, plus footnote text, captions, block quotes, abstracts
-5. **Fallback** — blueprint's `Normal` style
+2. **Heading semantic match** — if the paragraph was classified as a heading (by style or by inference), find the blueprint style with the matching `outlineLvl`, falling back to adjacent levels if an exact level is absent. This runs *before* name matching so that inferred headings aren't silently absorbed by a "Normal" name match.
+3. **Exact name match** — identical style names across both documents
+4. **Case-insensitive match** — handles `normal` vs `Normal`
+5. **Semantic class** — heading level 1–9 detected via `outlineLvl` (primary) then style-name regex covering DE/FR/IT/ES/RU/ZH/PL/SE/EN patterns and custom names like `Ueberschrift_01`; plus footnote text, captions, block quotes, abstracts
+6. **Fallback** — blueprint's `Normal` style
 
 The full mapping table is logged at `INFO` level under `[MAPPER]`.
 
@@ -262,12 +268,14 @@ Clear body                        ← remove all <w:p> and <w:tbl>; keep final <
 ↓
 For each source element:
   paragraph → deep-copy <w:p> XML
+              strip tracking attributes (rsidR, rsidRPr, w14:paraId, …)
               reset <w:pPr> → only mapped style reference (strips all direct formatting)
               clean <w:rPr> → keep bold/italic/underline, strip fonts/colors/sizes
-  table     → deep-copy <w:tbl> XML, remap each cell paragraph's style
+  table     → deep-copy <w:tbl> XML, strip tracking attrs, remap each cell paragraph's style
 ↓
 Footnotes → remove blueprint's numbered footnotes
             insert source footnotes with blueprint's footnote text style
+            replace source footnote-marker char styles with blueprint's FootnoteReference style
             commit updated footnotes.xml blob
 ↓
 doc.save(output)
@@ -275,11 +283,17 @@ doc.save(output)
 
 The `<w:pPr>` reset is the key operation: all direct paragraph formatting from the source (indents, spacing, alignment, section breaks) is discarded. Only the style reference remains, so the blueprint style governs the visual output completely.
 
+**Tracking attribute stripping** is essential for output validity. DOCX paragraphs carry revision session IDs (`w:rsidR`, `w:rsidRPr`, etc.) and Word 2010+ paragraph identifiers (`w14:paraId`). When paragraphs are deep-copied from the source document into an output that starts from the blueprint, these IDs are foreign to the blueprint's `settings.xml` and will trigger Word's "found unreadable content" repair dialog. All tracking attributes are stripped from every `<w:p>` and `<w:r>` element immediately after each deep-copy.
+
 #### Inline formatting
 
 Run-level properties that carry semantic meaning are kept: `w:b` (bold), `w:i` (italic), `w:u` (underline), `w:strike`, `w:highlight`, `w:smallCaps`, `w:allCaps`, `w:vertAlign`, `w:vanish`.
 
 Run-level properties that are purely aesthetic are stripped: `w:rFonts`, `w:sz`, `w:color`, `w:lang`, `w:kern`, `w:spacing` — the blueprint style defines all of these.
+
+#### Footnote formatting
+
+Footnote body paragraphs are transplanted using the blueprint's footnote text style, so indentation, font, and spacing match the blueprint. The footnote marker run (the superscript number at the start of each footnote paragraph) gets its character style replaced with the blueprint's `FootnoteReference` character style, ensuring font size, vertical alignment, and superscript rendering are consistent regardless of what char style the source document used.
 
 #### Debug log tags
 
@@ -287,10 +301,125 @@ Every log line is tagged for easy `grep`:
 
 | Tag | What it covers |
 |---|---|
-| `[BLUEPRINT]` | Section geometry, every style attribute |
+| `[BLUEPRINT]` | Section geometry, every style attribute, footnote ref char style detection |
 | `[EXTRACT]` | Every paragraph read from source (style, class, run count, text preview) |
 | `[MAPPER]` | Every style resolution and the reason (exact/semantic/fallback) |
 | `[BUILD]` | Every element inserted, every pPr reset, every rPr element stripped |
+
+---
+
+## DOCX Debugger
+
+`debug_format.py` is a standalone diagnostic toolkit for inspecting, validating, and comparing `.docx` files at the OOXML level. It requires only `python-docx` and `lxml`.
+
+```bash
+python debug_format.py <command> [options]
+```
+
+### Debugger Subcommands
+
+#### `inspect` — General overview
+
+```bash
+python debug_format.py inspect doc.docx
+```
+
+Prints: ZIP inventory, page geometry (size and margins in pt), heading styles with `outlineLvl`, body paragraph count and table count, top style frequencies, and footnote count.
+
+---
+
+#### `check` — Corruption / validity checks
+
+```bash
+python debug_format.py check doc.docx
+```
+
+Runs seven checks and reports PASS or FAIL for each:
+
+| Check | What it detects |
+|---|---|
+| XML parse validity | Any part that fails `lxml.etree.fromstring` |
+| rsid vs settings.xml | Paragraph `w:rsidR` values absent from `<w:rsids>` — the cause of "Word found unreadable content" |
+| `w14:paraId` uniqueness | Duplicate paragraph IDs across all XML parts |
+| Relationship targets | `.rels` entries whose target files are missing from the ZIP |
+| Body structure | Unexpected element tags; `<w:sectPr>` not last |
+| Bookmark ID uniqueness | Duplicate `<w:bookmarkStart id>` values |
+| Inline rId references | Body `r:id` / `r:embed` references not found in `document.xml.rels` |
+
+Example workflow after a transplant:
+
+```bash
+python debug_format.py check out.docx
+# OK    No rsid attributes in body paragraphs
+# OK    All relationship targets present in ZIP
+# ...
+# Result: PASS — no issues found
+```
+
+---
+
+#### `headings` — Heading structure analysis
+
+```bash
+python debug_format.py headings doc.docx
+```
+
+Two-section output:
+
+1. **Styles with explicit `outlineLvl`** — language-independent, most reliable source of heading hierarchy
+2. **Property-based inference preview** — simulates the same algorithm used by `format_transplant.py`: detects bold + short-text paragraphs, clusters by font size, and prints the inferred heading level for each candidate
+
+Useful for understanding what heading structure a source document has before running a transplant.
+
+---
+
+#### `footnotes` — Detailed footnote structure
+
+```bash
+python debug_format.py footnotes doc.docx
+python debug_format.py footnotes doc.docx --id 3        # single footnote
+python debug_format.py footnotes doc.docx --all-paras   # all paragraphs per footnote
+```
+
+For each footnote paragraph, prints: paragraph style, indentation (left/hanging/firstLine in pt). For each run: character style (`rStyle`), font size, `vertAlign`, `position`, bold/italic flags, and a label identifying footnoteRef markers, tab separators, space separators, or text content.
+
+Use this to verify footnote number formatting (superscript vs `vertAlign`, font size) and the separator character between footnote number and footnote text.
+
+---
+
+#### `compare` — Side-by-side document comparison
+
+```bash
+python debug_format.py compare blueprint.docx source.docx
+```
+
+Prints a structured comparison: heading styles by level (A vs B), paragraph/character style inventory (shared, only-in-A, only-in-B), body content counts (paragraphs, tables, footnotes), and top style frequencies with flags where a style appears in one document but not the other.
+
+Useful for planning style mappings before running a transplant.
+
+---
+
+#### `styles` — Full style dump
+
+```bash
+python debug_format.py styles doc.docx
+python debug_format.py styles doc.docx --type paragraph
+python debug_format.py styles doc.docx --type character
+```
+
+Tabular dump of all styles: type, heading level, font size, bold/italic flags, name, and ID. Filterable by type (`paragraph`, `character`, `table`, `numbering`).
+
+---
+
+#### `xml` — Pretty-print any ZIP part
+
+```bash
+python debug_format.py xml doc.docx word/document.xml
+python debug_format.py xml doc.docx word/styles.xml --strip-ns
+python debug_format.py xml doc.docx footnotes          # fuzzy match
+```
+
+Parses and pretty-prints any XML entry from the DOCX ZIP. `--strip-ns` removes `xmlns:*` declarations to reduce noise. Partial part names are resolved by substring match.
 
 ---
 
