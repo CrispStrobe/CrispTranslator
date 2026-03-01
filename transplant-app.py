@@ -209,6 +209,7 @@ def run_transplant(
                 model=model_val,
                 api_key=llm_api_key.strip() or None,
             )
+            # Use the actual slider value
             llm_cfg.para_batch_size        = int(llm_batch_size)
             llm_cfg.blueprint_context_chars = int(llm_context_chars)
 
@@ -491,7 +492,7 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
                     maximum=50,
                     step=1,
                     value=15,
-                    info="Smaller = more calls, larger = may hit context limits.",
+                    info="Groq: 5 recommended. Others: 15-20. Smaller = more calls, but safer against rate limits.",
                 )
                 llm_context_chars = gr.Slider(
                     label="Blueprint context  (chars sent for style guide generation)",

@@ -336,11 +336,11 @@ class LLMConfig:
     max_tokens: int = 4096
     temperature: float = 0.1           # low for deterministic formatting
     # How many chars of blueprint text to send for styleguide generation (~10 K tokens)
-    blueprint_context_chars: int = 40_000
+    blueprint_context_chars: int = 100_000
     # Source paragraphs per LLM batch
     para_batch_size: int = 15
     # Retry settings
-    max_retries: int = 3
+    max_retries: int = 5
     retry_delay_s: float = 5.0
 
 
@@ -2017,15 +2017,32 @@ class MultiProviderLLMClient:
                 else:
                     return self._openai_compat(system, user, config)
             except Exception as exc:
-                is_rate_limit = "429" in str(exc) or "rate limit" in str(exc).lower()
+                is_rate_limit = False
+                header_delay = None
+                
+                # Try to extract retry-after from common SDK exceptions
+                exc_str = str(exc).lower()
+                if "429" in exc_str or "rate limit" in exc_str:
+                    is_rate_limit = True
+                    
+                # OpenAI / Groq / OpenRouter often put it in headers
+                if hasattr(exc, "response") and hasattr(exc.response, "headers"):
+                    retry_after = exc.response.headers.get("retry-after")
+                    if retry_after and retry_after.isdigit():
+                        header_delay = float(retry_after)
                 
                 # Exponential backoff: retry_delay * (2 ^ (attempt-1))
                 delay = config.retry_delay_s * (2 ** (attempt - 1))
-                if is_rate_limit:
+                
+                if header_delay:
+                    delay = max(delay, header_delay + 1.0) # Add 1s buffer
+                elif is_rate_limit:
                     delay *= 2 # Extra patience for rate limits
+                
+                if is_rate_limit:
                     logger.warning(
-                        "[LLM] %s rate limited (429). Waiting %.1f seconds...",
-                        config.provider.value, delay
+                        "[LLM] %s rate limited (429). Waiting %.1f seconds... (Attempt %d/%d)",
+                        config.provider.value, delay, attempt, config.max_retries
                     )
                 else:
                     logger.warning(
@@ -2206,9 +2223,6 @@ class MultiProviderLLMClient:
             raise RuntimeError(f"Ollama error {resp.status_code}: {resp.text}")
         
         text = resp.json().get("response", "")
-        logger.debug("[LLM] Response: %d chars", len(text))
-        return text
-        text = resp.choices[0].message.content or ""
         logger.debug("[LLM] Response: %d chars", len(text))
         return text
 
@@ -2556,8 +2570,8 @@ class LLMContentFormatter:
             if batch_start > 0:
                 batch_delay = 2.0 # 2 seconds between batches
                 if config.provider == LLMProvider.GROQ:
-                    batch_delay = 10.0 # Extra delay for Groq (very tight limits)
-                logger.debug("[LLM-FMT] Inter-batch delay: %.1fs", batch_delay)
+                    batch_delay = 15.0 # Extra delay for Groq (very tight limits)
+                logger.info("[LLM-FMT] Inter-batch delay: %.1fs...", batch_delay)
                 time.sleep(batch_delay)
 
             batch = to_format[batch_start: batch_start + config.para_batch_size]
