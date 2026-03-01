@@ -1814,22 +1814,22 @@ class DocumentBuilder:
                             "[BUILD] LLM footnote id=%s para %d: '%.50s'",
                             fd.footnote_id, para_idx, llm_text,
                         )
-                        continue   # skip the original run-cleaning below
-
-                    # ── Original run-clean path ────────────────────────
-                    # Apply blueprint style to <w:footnoteRef> marker run;
-                    # strip source aesthetics from all other runs.
-                    for r_elem in p_elem.findall(qn("w:r")):
-                        fn_ref_check = _xpath(r_elem, ".//w:footnoteRef")
-                        if fn_ref_check:
-                            self._apply_fn_ref_style(r_elem)
-                            continue
-                        rPr = r_elem.find(qn("w:rPr"))
-                        if rPr is not None:
-                            for child in [c for c in rPr if c.tag not in KEEP_RPR_TAGS]:
-                                rPr.remove(child)
+                    else:
+                        # ── Original run-clean path ────────────────────────
+                        # Apply blueprint style to <w:footnoteRef> marker run;
+                        # strip source aesthetics from all other runs.
+                        for r_elem in p_elem.findall(qn("w:r")):
+                            fn_ref_check = _xpath(r_elem, ".//w:footnoteRef")
+                            if fn_ref_check:
+                                self._apply_fn_ref_style(r_elem)
+                                continue
+                            rPr = r_elem.find(qn("w:rPr"))
+                            if rPr is not None:
+                                for child in [c for c in rPr if c.tag not in KEEP_RPR_TAGS]:
+                                    rPr.remove(child)
 
                     # Ensure separator after marker matches blueprint convention
+                    # (Re-applied even for LLM text to ensure tab preservation)
                     self._normalize_fn_separator(p_elem)
 
                 fn_root.append(fn_xml)
@@ -2466,16 +2466,22 @@ def parse_md_runs(text: str) -> List["RunData"]:
 # ============================================================================
 
 _FMT_SYSTEM = """\
-You are a scholarly editor applying a strict style guide to format paragraphs.
-Follow the style guide exactly. Do not paraphrase, translate, or alter any wording.
-Only apply formatting as the guide specifies.
+You are a scholarly editor applying a strict editorial style guide to existing text.
+Your ONLY task is to apply inline formatting (bold/italic) to the text provided.
+
+CRITICAL CONSTRAINTS:
+1. DO NOT translate the text.
+2. DO NOT paraphrase or summarize the text.
+3. DO NOT add any introductory remarks, commentary, or conclusions.
+4. DO NOT change a single word or punctuation mark of the original text.
+5. REPRODUCE the text EXACTLY as given, only adding Markdown markers for formatting.
 
 Use Markdown for inline formatting:
   *italic*          for italic text
   **bold**          for bold text
   ***bold italic*** for bold + italic
-No other Markdown. Return plain paragraph text with inline markers only.
-No extra commentary, no numbering, no blank lines within a paragraph.
+No other Markdown (no # headings, no lists). Return plain paragraph text with inline markers only.
+Return EXACTLY one formatted response for each input paragraph.
 """
 
 _PARA_USER_TMPL = """\
@@ -2721,6 +2727,7 @@ class LLMFormatTransplanter:
         styleguide_out: Optional[Path] = None,
         llm_mode: str = "both",
         user_style_overrides: Optional[Dict[str, str]] = None,
+        debug_limit: Optional[int] = None,
     ) -> Optional[Path]:
         """
         Returns the path to the saved styleguide if styleguide_out was set,
@@ -2733,6 +2740,8 @@ class LLMFormatTransplanter:
         logger.info("  Output     : %s", output_path)
         logger.info("  Provider   : %s / %s", llm_config.provider.value, llm_config.model)
         logger.info("  LLM mode   : %s", llm_mode)
+        if debug_limit:
+            logger.info("  Debug limit: %d paragraphs", debug_limit)
         logger.info("  Batch size : %d  Context chars: %d",
                     llm_config.para_batch_size, llm_config.blueprint_context_chars)
         logger.info("═" * 60)
@@ -2769,6 +2778,19 @@ class LLMFormatTransplanter:
         src_doc = Document(str(source_path))
         extractor = ContentExtractor()
         body_elements, footnotes = extractor.extract(src_doc)
+
+        # Apply debug limit if requested
+        if debug_limit:
+            count = 0
+            limited_body = []
+            for e in body_elements:
+                limited_body.append(e)
+                if e.semantic_class != "table":
+                    count += 1
+                if count >= debug_limit:
+                    break
+            body_elements = limited_body
+            logger.info("Debug limit applied: only processing first %d body paragraphs.", debug_limit)
 
         # ── Phase 2-LLM: LLM content formatting ───────────────────────
         formatter = LLMContentFormatter(client)
@@ -2899,6 +2921,8 @@ Debug tips:
                            help="Blueprint chars to send for styleguide gen (default: 40000)")
     llm_group.add_argument("--llm-batch", type=int, default=15, metavar="N",
                            help="Source paragraphs per LLM batch (default: 15)")
+    llm_group.add_argument("--debug-limit", type=int, default=None, metavar="N",
+                           help="Process only first N paragraphs (for testing)")
 
     args = parser.parse_args()
 
@@ -2947,6 +2971,7 @@ Debug tips:
                 styleguide_out=sg_out,
                 llm_mode=args.llm_mode,
                 user_style_overrides=overrides,
+                debug_limit=args.debug_limit,
             )
         except Exception as exc:
             logger.error("Fatal error: %s", exc, exc_info=True)
