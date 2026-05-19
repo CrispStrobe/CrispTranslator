@@ -278,6 +278,21 @@ Strips `w14:paraId`, `w14:textId`, `w:rsidR`, `w:rsidRPr`, `w:rsidDel`, `w:rsidR
 
 ---
 
+## Tests
+
+Lightweight `unittest`-based suite covering the text-processing and
+XML-surgery primitives behind `rtf_to_docx_endnotes.py` and `docxtool.py`.
+
+```bash
+python -m unittest discover tests -v
+```
+
+Requires only `python-docx` and `lxml`. No `pandoc` or `textutil` needed —
+fixtures build minimal docx packages in-memory. CI runs the suite on Linux,
+macOS, and Windows against Python 3.10–3.12 (see `.github/workflows/tests.yml`).
+
+---
+
 ## License
 
 GNU Affero General Public License v3.0 (AGPL-3.0). See [`LICENSE`](LICENSE).
