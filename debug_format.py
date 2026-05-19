@@ -279,14 +279,17 @@ def cmd_check(args):
                 if val:
                     body_rsids.add(val)
 
-        sroot = etree.fromstring(z.read("word/settings.xml"))
-        rsids_el = sroot.find(w("rsids"))
+        # settings.xml is optional in OPC; absent → no declared rsids,
+        # which is fine unless the body has some.
         settings_rsids: Set[str] = set()
-        if rsids_el is not None:
-            for c in rsids_el:
-                val = c.get(w("val"))
-                if val:
-                    settings_rsids.add(val)
+        if "word/settings.xml" in names:
+            sroot = etree.fromstring(z.read("word/settings.xml"))
+            rsids_el = sroot.find(w("rsids"))
+            if rsids_el is not None:
+                for c in rsids_el:
+                    val = c.get(w("val"))
+                    if val:
+                        settings_rsids.add(val)
 
         missing = body_rsids - settings_rsids
         if missing:
@@ -328,9 +331,13 @@ def cmd_check(args):
         for rel_name in (n for n in names if n.endswith(".rels")):
             try:
                 rels_root = etree.fromstring(z.read(rel_name))
-                # Base path of the file that owns these rels
-                # e.g. word/_rels/document.xml.rels → base is word/
-                base = rel_name.replace("_rels/", "").rsplit("/", 1)[0]
+                # Base path of the file that owns these rels:
+                #   word/_rels/document.xml.rels → owner=word/document.xml,
+                #   base=word/.
+                #   _rels/.rels                  → owner=/ (package root),
+                #   base="".
+                owner = rel_name.replace("_rels/", "")
+                base = owner.rsplit("/", 1)[0] if "/" in owner else ""
                 for rel in rels_root:
                     if rel.get("TargetMode") == "External":
                         continue
@@ -362,7 +369,15 @@ def cmd_check(args):
         body = doc_root.find(w("body"))
         if body is not None:
             children = list(body)
-            valid_tags = {w("p"), w("tbl"), w("sectPr")}
+            # OOXML allows bookmarkStart / bookmarkEnd as direct body
+            # children (they let a bookmark span multiple paragraphs).
+            valid_tags = {
+                w("p"),
+                w("tbl"),
+                w("sectPr"),
+                w("bookmarkStart"),
+                w("bookmarkEnd"),
+            }
             bad_tags = [c.tag for c in children if c.tag not in valid_tags]
             sect_last = bool(children) and children[-1].tag == w("sectPr")
             if bad_tags:
