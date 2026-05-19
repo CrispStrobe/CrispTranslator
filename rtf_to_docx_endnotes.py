@@ -116,8 +116,8 @@ _WHOLE_PARA_BOLD_RE = re.compile(
 # breaks the regex), and the whole-paragraph bold survives.
 _SPURIOUS_SINGLE_CHAR_BOLD_RES = [
     re.compile(r"\*\*([^\sA-Za-z0-9\*])\*\*"),  # **X**
-    re.compile(r"\*\*([^\sA-Za-z0-9\*])\*"),    # **X*
-    re.compile(r"\*([^\sA-Za-z0-9\*])\*\*"),    # *X**
+    re.compile(r"\*\*([^\sA-Za-z0-9\*])\*"),  # **X*
+    re.compile(r"\*([^\sA-Za-z0-9\*])\*\*"),  # *X**
 ]
 
 
