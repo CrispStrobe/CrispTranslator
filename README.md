@@ -1,12 +1,13 @@
 # CrispTranslator
 
-Three complementary tools for working with Word documents at the formatting level:
+Four complementary tools for working with Word documents at the formatting level:
 
 | Tool | What it does |
 |---|---|
 | **Document Translator** | Translate `.docx` files across 200+ languages while preserving all formatting — down to bold/italic on individual words, footnotes, tables, headers, and footers |
 | **Format Transplant** | Apply the complete formatting of a blueprint `.docx` to the content of a different document — page layout, styles, margins, everything — without translating anything |
 | **DOCX Debugger** | Inspect, validate, and compare `.docx` files at the XML level — corruption checks, heading inference, footnote structure, style dumps, and side-by-side comparison |
+| **RTF Notes → DOCX** | Convert RTF (or Markdown/DOCX) files whose citations are written as inline `[N]` markers followed by a trailing `Endnotes` list, producing a DOCX with *real* Word footnotes (or endnotes) — anchored, auto-numbered, and Word-clean |
 
 All tools operate at the XML level of the OOXML format (`.docx`), preserving structure that higher-level APIs would silently discard.
 
@@ -25,6 +26,7 @@ All tools operate at the XML level of the OOXML format (`.docx`), preserving str
   - [How it works](#how-the-transplant-works)
 - [DOCX Debugger](#docx-debugger)
   - [Subcommands](#debugger-subcommands)
+- [RTF Notes → DOCX](#rtf-notes--docx)
 - [License](#license)
 
 ---
@@ -194,6 +196,52 @@ python debug_format.py xml doc.docx word/document.xml --strip-ns --exact
 ```
 
 Directly inspects the raw XML of any part within the `.docx` archive. The `--exact` flag allows for surgical inspection of specific components like `word/footnotes.xml`.
+
+---
+
+## RTF Notes → DOCX
+
+Many editorial workflows produce documents whose citations live inline as bracketed numbers (`…drawing its boundaries.[1]`) followed by a numbered `Endnotes` list at the bottom. `rtf_to_docx_endnotes.py` rewrites these into *real* Word notes that auto-number, anchor correctly, and survive editing.
+
+### CLI
+
+```bash
+python rtf_to_docx_endnotes.py paper.rtf -o paper.docx
+```
+
+```
+positional arguments:
+  input                   source RTF / MD / DOCX
+
+options:
+  -o, --output            output .docx (default: same stem with .docx)
+  --notes {footnotes,endnotes}
+                          render notes as Word footnotes (default) or endnotes
+  --reference-doc REF     pandoc reference docx; if omitted, one is built
+                          on the fly with the body/heading-font options below
+  --body-font NAME        body font for the auto-built reference (default: Times New Roman)
+  --body-size PT          body size in points (default: 14)
+  --heading-font NAME     heading font (default: Arial)
+  --keep-bold             keep paragraph-wide **bold** wrappers from the source
+                          (default: strip them; intra-paragraph emphasis is preserved)
+  --no-strip-rsids        skip the rsid/paraId tracking-attr scrub
+  --keep-intermediates    leave temp files in place for debugging
+```
+
+### How it works
+
+1. **pandoc RTF → Markdown** with `--wrap=preserve`.
+2. **Notes section detection**: header matching `/^#{1,6}\s*(end ?notes?|notes|footnotes|anmerkungen|endnoten|fußnoten|references)\s*$/i`, then per-note paragraphs starting with `[N]`. Numeric markers only — slide markers like `[S2]` and bracketed names like `[Liedhegener]` are left alone.
+3. **Marker rewrite**: every digit-only `[N]` in the body becomes pandoc's footnote syntax `[^N]`; note bodies are appended as `[^N]: …` definitions.
+4. **Whole-paragraph bold strip** (opt-out via `--keep-bold`): some editorial workflows cosmetically wrap every body paragraph in `**…**`; this is removed while leaving intra-paragraph emphasis intact.
+5. **Auto-built reference docx**: starts from pandoc's default reference docx (so `FootnoteText`/`FootnoteReference` and friends remain defined), then patches `Normal` and `Heading 1-4` to the requested fonts/sizes, writing `w:rFonts` for all four scripts (`ascii`, `hAnsi`, `eastAsia`, `cs`) so Word doesn't fall back to the theme font.
+6. **pandoc Markdown → DOCX** with that reference docx — output uses real `<w:footnoteReference>` elements anchored to entries in `word/footnotes.xml`.
+7. **Endnotes mode** (`--notes endnotes`): post-processes the DOCX to rename `word/footnotes.xml` → `word/endnotes.xml`, rewrite references in `document.xml`, and patch `[Content_Types].xml` plus the relationship.
+8. **rsid/paraId scrub**: strips `w14:paraId`, `w:rsidR`, `w:rsidRPr`, `w:rsidDel`, `w:rsidRDefault`, `w:rsidP`, `w:rsidTr`, `w:rsidSect` from every `<w:p>` and `<w:r>` (Word regenerates them on save; references to revision sessions that don't exist in `settings.xml` are a known cause of the "unreadable content" recovery dialog).
+
+### Why these choices
+
+A direct RTF→DOCX via Apple's `textutil` preserves the source's runs faithfully but emits OOXML that Word's strict validator rejects (non-standard tags like `w:sz-cs`, missing `styles.xml`, mis-ordered `<w:rPr>` children, malformed `customXml` relationships). The pandoc path produces Word-clean OOXML; the reference docx is how we recover *enough* visual fidelity (body and heading fonts/sizes) without inheriting textutil's quirks.
 
 ---
 
