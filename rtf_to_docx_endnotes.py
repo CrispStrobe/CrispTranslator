@@ -100,9 +100,57 @@ _WHOLE_PARA_BOLD_RE = re.compile(
     re.DOTALL,
 )
 
+# `pandoc rtf -> md` sometimes emits spurious bold markers around
+# *single* non-ASCII characters when the source RTF has per-character
+# bold formatting on those codepoints (common with diacritics —
+# `**ô**`, `**ç**`, `**ä**`). The patterns are:
+#
+#   `**X**`   — symmetric, the typical case
+#   `**X*`    — asymmetric: bold-open + char + italic-close, common when
+#               the surrounding text is in italic
+#   `*X**`    — the mirror: italic-open + char + bold-close
+#
+# Genuine emphasis is never applied to a single non-ASCII character, so
+# stripping all three patterns is safe. Without this preprocess the
+# surrounding outer paragraph's `**...**` match fails (nested `**`
+# breaks the regex), and the whole-paragraph bold survives.
+_SPURIOUS_SINGLE_CHAR_BOLD_RES = [
+    re.compile(r"\*\*([^\sA-Za-z0-9\*])\*\*"),  # **X**
+    re.compile(r"\*\*([^\sA-Za-z0-9\*])\*"),    # **X*
+    re.compile(r"\*([^\sA-Za-z0-9\*])\*\*"),    # *X**
+]
+
+
+def _drop_single_char_non_ascii_bold(text: str) -> tuple[str, int]:
+    """Strip spurious bold markers around isolated non-ASCII characters.
+
+    Runs the three patterns to a fixed point: cleaning one can expose the
+    next (e.g. `*synag**ô**g**ç*` → strip `**ô**` → `*synagôg**ç*` →
+    strip `**ç*` → `*synagôgç*`).
+    """
+    total = 0
+    while True:
+        before = text
+        for pat in _SPURIOUS_SINGLE_CHAR_BOLD_RES:
+            text, n = pat.subn(r"\1", text)
+            total += n
+        if text == before:
+            break
+    return text, total
+
 
 def strip_paragraph_bold(body_md: str) -> tuple[str, int]:
-    """Remove `**...**` wrappers around entire paragraphs. Returns (text, count)."""
+    """Remove `**...**` wrappers around entire paragraphs. Returns (text, count).
+
+    Also strips spurious `**X**` around isolated non-ASCII characters that
+    `pandoc rtf -> md` injects when the source RTF carries per-character
+    bold formatting on those codepoints. Without this preprocess, those
+    nested markers leave the whole-paragraph bold unmatched and pandoc's
+    md→docx pass renders the paragraph with the leading `**[...]` as
+    literal text plus a confused mix of bold runs.
+    """
+    body_md, _ = _drop_single_char_non_ascii_bold(body_md)
+
     paragraphs = re.split(r"(\n[ \t]*\n)", body_md)
     out: list[str] = []
     stripped = 0

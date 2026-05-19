@@ -148,6 +148,31 @@ class TestStripParagraphBold(unittest.TestCase):
         self.assertEqual(n, 0)
         self.assertEqual(out, md)
 
+    def test_strips_spurious_single_char_non_ascii_bold(self):
+        # Regression: `pandoc rtf -> md` injects `**X**` around single
+        # non-ASCII letters when the source RTF has per-character bold
+        # formatting on that codepoint (e.g. on accented letters). Those
+        # nested markers used to corrupt the outer paragraph's `**...**`
+        # match. After the preprocess they're gone and the whole-paragraph
+        # wrap matches.
+        md = "**Lead text *italic* and *synag**ô**g**ç*. Tail.**"
+        out, n = strip_paragraph_bold(md)
+        self.assertEqual(n, 1, "whole paragraph should unbold after cleanup")
+        self.assertNotIn("**ô**", out)
+        self.assertNotIn("**ç**", out)
+        self.assertIn("ô", out)
+        self.assertIn("ç", out)
+        self.assertFalse(out.startswith("**"))
+        self.assertFalse(out.rstrip().endswith("**"))
+
+    def test_leaves_legitimate_intra_paragraph_emphasis_on_ascii_word(self):
+        # `**word**` around an ASCII word IS legitimate emphasis; never
+        # strip. The single-char preprocess targets only non-ASCII chars.
+        md = "Lead **emphasised** tail."
+        out, n = strip_paragraph_bold(md)
+        self.assertEqual(n, 0)
+        self.assertIn("**emphasised**", out)
+
 
 class TestBuildFootnotedMarkdown(unittest.TestCase):
     def test_definitions_in_numeric_order(self):
