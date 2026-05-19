@@ -40,9 +40,17 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install tooling
+        # Pinned versions: black --check / ruff format are meant to be
+        # byte-stable, so we don't want a future tool release to spuriously
+        # fail CI. Bump these explicitly when needed.
         run: |
           pip install python-docx lxml
-          pip install ruff black mypy bandit pylint
+          pip install \
+            ruff==0.15.7 \
+            black==25.9.0 \
+            mypy==1.19.1 \
+            bandit==1.9.4 \
+            pylint==3.3.9
       - name: ruff
         run: ruff check .
       - name: black --check
