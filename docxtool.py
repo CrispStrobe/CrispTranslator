@@ -95,6 +95,17 @@ def cmd_clean(args: list[str]) -> int:
         action="store_true",
         help="report what would be changed but don't write",
     )
+    p.add_argument(
+        "--backend",
+        choices=("auto", "python", "rust"),
+        default="auto",
+        help=(
+            "implementation to use. 'auto' (default) prefers the Rust "
+            "wheel (crisp_docx) if installed, falling back to pure Python. "
+            "'rust' fails if the wheel isn't available. 'python' forces "
+            "the lxml-backed implementation in rtf_to_docx_endnotes."
+        ),
+    )
     ns = p.parse_args(args)
 
     src: Path = ns.input.expanduser().resolve()
@@ -133,14 +144,47 @@ def cmd_clean(args: list[str]) -> int:
         print(f"docxtool clean: would strip {total} rsid/paraId attrs from {src}")
         return 0
 
-    removed = strip_rsids_from_docx(dst)
-    print(f"docxtool clean: stripped {removed} rsid/paraId attrs -> {dst}")
+    rust_mod = _resolve_backend(ns.backend)
+    if rust_mod is not None:
+        removed = rust_mod.strip_rsids(str(dst))
+        suffix = " (via crisp_docx)"
+    else:
+        removed = strip_rsids_from_docx(dst)
+        suffix = ""
+    print(f"docxtool clean: stripped {removed} rsid/paraId attrs -> {dst}{suffix}")
 
     if ns.also_normalize_tags:
-        renamed = _normalize_nonstandard_tags(dst)
+        if rust_mod is not None:
+            renamed = rust_mod.normalize_tags(str(dst))
+        else:
+            renamed = _normalize_nonstandard_tags(dst)
         if renamed:
             print(f"docxtool clean: normalized {renamed} non-standard OOXML tags")
     return 0
+
+
+def _resolve_backend(choice: str):  # -> ModuleType | None
+    """Resolve which implementation backend to use.
+
+    `choice` is one of 'auto', 'rust', 'python'. Returns the imported
+    `crisp_docx` module when the Rust path should be used, or `None` to
+    indicate the Python fallback. With 'rust', raises `SystemExit` if the
+    wheel isn't installed.
+    """
+    if choice == "python":
+        return None
+    try:
+        # pylint: disable=import-outside-toplevel,c-extension-no-member
+        import crisp_docx  # type: ignore[import-not-found]
+    except ImportError as exc:
+        if choice == "rust":
+            raise SystemExit(
+                "docxtool: --backend=rust requested but `crisp_docx` is "
+                "not installed. Run `pip install crisp-docx` or build "
+                "from source with maturin."
+            ) from exc
+        return None
+    return crisp_docx
 
 
 # --- tag normalizer (Apple textutil quirks) -------------------------------

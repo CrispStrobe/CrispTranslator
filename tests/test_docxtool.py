@@ -108,6 +108,51 @@ class TestCleanSubcommand(unittest.TestCase):
             self.assertTrue(dst.exists())
             self.assertNotIn("paraId", part(dst, "word/document.xml"))
 
+    def test_backend_python_forces_python_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "t.docx"
+            write_docx(path, DOC_XML_DIRTY)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = docxtool.cmd_clean([str(path), "--backend", "python"])
+            self.assertEqual(rc, 0)
+            self.assertNotIn("via crisp_docx", buf.getvalue())
+            self.assertNotIn("paraId", part(path, "word/document.xml"))
+
+    def test_backend_rust_when_wheel_available(self):
+        try:
+            import crisp_docx  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
+        except ImportError:
+            self.skipTest("crisp_docx wheel not installed")
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "t.docx"
+            write_docx(path, DOC_XML_DIRTY)
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = docxtool.cmd_clean([str(path), "--backend", "rust"])
+            self.assertEqual(rc, 0)
+            self.assertIn("via crisp_docx", buf.getvalue())
+            self.assertNotIn("paraId", part(path, "word/document.xml"))
+
+    def test_backend_rust_errors_without_wheel(self):
+        # Simulate "wheel not installed" by stubbing the resolver. The real
+        # _resolve_backend has the import guard; we just verify cmd_clean
+        # propagates the SystemExit it would raise.
+        orig_resolve = docxtool._resolve_backend
+
+        def fake(_choice):
+            raise SystemExit("docxtool: simulated missing wheel")
+
+        docxtool._resolve_backend = fake
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                path = Path(td) / "t.docx"
+                write_docx(path, DOC_XML_DIRTY)
+                with self.assertRaises(SystemExit):
+                    docxtool.cmd_clean([str(path), "--backend", "rust"])
+        finally:
+            docxtool._resolve_backend = orig_resolve
+
 
 class TestDispatcher(unittest.TestCase):
     """End-to-end smoke tests of the docxtool CLI."""

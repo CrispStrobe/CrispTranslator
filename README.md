@@ -270,7 +270,19 @@ python docxtool.py clean broken.docx                        # in place
 python docxtool.py clean broken.docx -o fixed.docx          # to a new file
 python docxtool.py clean broken.docx --dry-run              # report only
 python docxtool.py clean broken.docx --also-normalize-tags  # + textutil quirks
+python docxtool.py clean broken.docx --backend rust         # force native
+python docxtool.py clean broken.docx --backend python       # force lxml
 ```
+
+The `--backend` flag selects the implementation:
+
+| Value | Behaviour |
+|---|---|
+| `auto` *(default)* | Use the [`crisp-docx`](https://github.com/CrispStrobe/crisp-docx) Rust wheel if installed; otherwise fall back to the lxml-backed Python implementation. |
+| `rust` | Require the Rust wheel; fail with a clear error if it isn't available. |
+| `python` | Force the Python implementation regardless of what's installed. |
+
+`pip install crisp-docx` makes the Rust path available. Output reflects which backend was used (`stripped N attrs … (via crisp_docx)`). Both paths produce byte-identical results — the difference is throughput on large files.
 
 Strips `w14:paraId`, `w14:textId`, `w:rsidR`, `w:rsidRPr`, `w:rsidDel`, `w:rsidRDefault`, `w:rsidP`, `w:rsidTr`, and `w:rsidSect` from every `<w:p>` and `<w:r>` in `word/document.xml`, `word/footnotes.xml`, and `word/endnotes.xml`. These attributes reference revision sessions registered in `settings.xml`'s `<w:rsids>`; when a body fragment from one document is grafted into another (transplant scenarios, partial recoveries, sed-style hand edits), the references go dangling and Word's strict validator fires the "unreadable content" recovery dialog. Stripping them is safe — Word regenerates fresh IDs the next time you save.
 
