@@ -1,6 +1,6 @@
 # CrispTranslator
 
-Four complementary tools for working with Word documents at the formatting level:
+Four complementary tools for working with Word documents at the formatting level, plus a unified `docxtool` CLI:
 
 | Tool | What it does |
 |---|---|
@@ -8,6 +8,7 @@ Four complementary tools for working with Word documents at the formatting level
 | **Format Transplant** | Apply the complete formatting of a blueprint `.docx` to the content of a different document — page layout, styles, margins, everything — without translating anything |
 | **DOCX Debugger** | Inspect, validate, and compare `.docx` files at the XML level — corruption checks, heading inference, footnote structure, style dumps, and side-by-side comparison |
 | **RTF Notes → DOCX** | Convert RTF (or Markdown/DOCX) files whose citations are written as inline `[N]` markers followed by a trailing `Endnotes` list, producing a DOCX with *real* Word footnotes (or endnotes) — anchored, auto-numbered, and Word-clean |
+| **docxtool** | One CLI with subcommands `notes`, `transplant`, `translate`, `debug`, and a standalone `clean` that strips rsid/paraId tracking attrs (the common cause of Word's "unreadable content" recovery dialog) |
 
 All tools operate at the XML level of the OOXML format (`.docx`), preserving structure that higher-level APIs would silently discard.
 
@@ -27,6 +28,7 @@ All tools operate at the XML level of the OOXML format (`.docx`), preserving str
 - [DOCX Debugger](#docx-debugger)
   - [Subcommands](#debugger-subcommands)
 - [RTF Notes → DOCX](#rtf-notes--docx)
+- [docxtool (unified CLI)](#docxtool-unified-cli)
 - [License](#license)
 
 ---
@@ -242,6 +244,37 @@ options:
 ### Why these choices
 
 A direct RTF→DOCX via Apple's `textutil` preserves the source's runs faithfully but emits OOXML that Word's strict validator rejects (non-standard tags like `w:sz-cs`, missing `styles.xml`, mis-ordered `<w:rPr>` children, malformed `customXml` relationships). The pandoc path produces Word-clean OOXML; the reference docx is how we recover *enough* visual fidelity (body and heading fonts/sizes) without inheriting textutil's quirks.
+
+---
+
+## docxtool (unified CLI)
+
+`docxtool.py` is a single dispatcher that wraps every tool above plus a standalone `clean` subcommand. Each subcommand forwards to its sibling script, so the per-tool CLIs continue to work on their own.
+
+```bash
+python docxtool.py <subcommand> [options...]
+```
+
+| Subcommand | Wraps | What it does |
+|---|---|---|
+| `notes` | `rtf_to_docx_endnotes.py` | RTF/MD with `[N]` markers → DOCX with real footnotes/endnotes |
+| `transplant` | `format_transplant.py` | Apply blueprint formatting to source content |
+| `translate` | `translator.py` | Translate a docx, preserving run-level formatting |
+| `debug` | `debug_format.py` | Inspect / validate / compare docx XML |
+| `clean` | *(built-in)* | Strip rsid/paraId tracking attrs from a docx; optional non-standard tag normalization |
+
+### `clean` standalone
+
+```bash
+python docxtool.py clean broken.docx                        # in place
+python docxtool.py clean broken.docx -o fixed.docx          # to a new file
+python docxtool.py clean broken.docx --dry-run              # report only
+python docxtool.py clean broken.docx --also-normalize-tags  # + textutil quirks
+```
+
+Strips `w14:paraId`, `w14:textId`, `w:rsidR`, `w:rsidRPr`, `w:rsidDel`, `w:rsidRDefault`, `w:rsidP`, `w:rsidTr`, and `w:rsidSect` from every `<w:p>` and `<w:r>` in `word/document.xml`, `word/footnotes.xml`, and `word/endnotes.xml`. These attributes reference revision sessions registered in `settings.xml`'s `<w:rsids>`; when a body fragment from one document is grafted into another (transplant scenarios, partial recoveries, sed-style hand edits), the references go dangling and Word's strict validator fires the "unreadable content" recovery dialog. Stripping them is safe — Word regenerates fresh IDs the next time you save.
+
+`--also-normalize-tags` additionally rewrites Apple `textutil`'s non-standard OOXML tags (`w:sz-cs` → `w:szCs`, `w:b-cs` → `w:bCs`, `w:i-cs` → `w:iCs`).
 
 ---
 
