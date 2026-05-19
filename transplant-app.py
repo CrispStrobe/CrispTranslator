@@ -6,7 +6,6 @@ Designed for local use and Hugging Face Spaces deployment.
 
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import Optional, Tuple, List
@@ -36,6 +35,7 @@ try:
         PROVIDER_DEFAULTS,
         llm_config_from_args,
     )
+
     ENGINE_OK = True
     ENGINE_ERROR = None
 except Exception as _e:
@@ -47,23 +47,31 @@ except Exception as _e:
 # ENVIRONMENT STATUS
 # ============================================================================
 
+
 def _check_environment() -> str:
     lines = []
 
-    def _ok(msg):  lines.append(f"✓ {msg}")
-    def _err(msg): lines.append(f"✗ {msg}")
-    def _inf(msg): lines.append(f"ℹ {msg}")
+    def _ok(msg):
+        lines.append(f"✓ {msg}")
+
+    def _err(msg):
+        lines.append(f"✗ {msg}")
+
+    def _inf(msg):
+        lines.append(f"ℹ {msg}")
 
     # python-docx
     try:
-        from docx import Document
+        from docx import Document  # noqa: F401  (availability probe)
+
         _ok("python-docx installed")
     except ImportError:
         _err("python-docx missing – run: pip install python-docx")
 
     # lxml
     try:
-        from lxml import etree
+        from lxml import etree  # noqa: F401  (availability probe)
+
         _ok("lxml installed")
     except ImportError:
         _err("lxml missing – run: pip install lxml")
@@ -80,6 +88,7 @@ def _check_environment() -> str:
     # openai (covers OpenAI / Nebius / Scaleway / OpenRouter / Mistral)
     try:
         import openai
+
         _ok(f"openai SDK {openai.__version__}  (covers OpenAI, Nebius, Scaleway, OpenRouter, Mistral)")
     except ImportError:
         _inf("openai SDK missing – run: pip install openai  (needed for OpenAI/Nebius/Scaleway/OpenRouter/Mistral)")
@@ -87,20 +96,22 @@ def _check_environment() -> str:
     # anthropic
     try:
         import anthropic
+
         _ok(f"anthropic SDK {anthropic.__version__}")
     except ImportError:
         _inf("anthropic SDK missing – run: pip install anthropic")
 
     # fastapi-poe
     try:
-        import fastapi_poe
+        import fastapi_poe  # noqa: F401  (availability probe)
+
         _ok("fastapi-poe installed")
     except ImportError:
         _inf("fastapi-poe missing – run: pip install fastapi-poe  (needed for Poe)")
 
     lines.append("")
     lines.append("── Detected API keys ──")
-    for provider, defaults in (PROVIDER_DEFAULTS.items() if ENGINE_OK else {}.items()):
+    for provider, defaults in PROVIDER_DEFAULTS.items() if ENGINE_OK else {}.items():
         env = defaults.get("env", "")
         if env and os.getenv(env):
             _ok(f"{provider.capitalize()} key found  ({env})")
@@ -115,6 +126,7 @@ logger.info("Environment status:\n%s", SETUP_STATUS)
 # CORE PROCESSING FUNCTION
 # ============================================================================
 
+
 def run_transplant(
     blueprint_file: Optional[str],
     source_file: Optional[str],
@@ -127,7 +139,7 @@ def run_transplant(
     llm_mode: str,
     styleguide_in_file: Optional[str],
     styleguide_out_name: str,
-    extra_styleguide_files,          # list[str] | None from gr.File(file_count="multiple")
+    extra_styleguide_files,  # list[str] | None from gr.File(file_count="multiple")
     llm_batch_size: int,
     llm_context_chars: int,
     progress=gr.Progress(),
@@ -147,7 +159,7 @@ def run_transplant(
         return None, None, "❌ No source file uploaded."
 
     blueprint_path = Path(blueprint_file)
-    source_path    = Path(source_file) if source_file else None
+    source_path = Path(source_file) if source_file else None
 
     if blueprint_path.suffix.lower() != ".docx":
         return None, None, "❌ Blueprint must be a .docx file."
@@ -174,7 +186,7 @@ def run_transplant(
     temp_dir = Path(tempfile.mkdtemp())
     output_filename = f"{source_path.stem}_transplanted.docx" if source_path else "transplanted.docx"
     output_path = temp_dir / output_filename
-    
+
     sg_out_name = (styleguide_out_name or "").strip() or "styleguide.md"
     if not sg_out_name.endswith(".md"):
         sg_out_name += ".md"
@@ -215,7 +227,7 @@ def run_transplant(
                 api_key=llm_api_key.strip() or None,
             )
             # Use the actual slider value
-            llm_cfg.para_batch_size        = int(llm_batch_size)
+            llm_cfg.para_batch_size = int(llm_batch_size)
             llm_cfg.blueprint_context_chars = int(llm_context_chars)
 
             extra_sg_paths: Optional[List[Path]] = None
@@ -237,7 +249,7 @@ def run_transplant(
             saved_sg = transplanter.run(
                 blueprint_path=blueprint_path,
                 source_path=source_path,
-                output_path=output_path if llm_mode != "styleguide_only" else temp_dir / "_unused.docx",
+                output_path=(output_path if llm_mode != "styleguide_only" else temp_dir / "_unused.docx"),
                 llm_config=llm_cfg,
                 extra_styleguide_paths=extra_sg_paths,
                 styleguide_in=sg_in,
@@ -272,9 +284,10 @@ def run_transplant(
         root_log.setLevel(saved_level)
         log_text = "\n".join(log_records)
         logger.error("Transplant failed: %s", exc, exc_info=True)
-        return None, None, (
-            f"❌ Error: {exc}\n\n"
-            f"── Log before error ──\n{log_text}"
+        return (
+            None,
+            None,
+            (f"❌ Error: {exc}\n\n── Log before error ──\n{log_text}"),
         )
 
     root_log.removeHandler(capture_handler)
@@ -283,10 +296,10 @@ def run_transplant(
     # ── Build summary ─────────────────────────────────────────────────
     log_text = "\n".join(log_records)
 
-    mapper_lines = [l for l in log_records if "[MAPPER]" in l and "→" in l]
+    mapper_lines = [ln for ln in log_records if "[MAPPER]" in ln and "→" in ln]
     mapper_summary = "\n".join(mapper_lines) if mapper_lines else "(none)"
 
-    llm_lines = [l for l in log_records if "Phase 1-LLM" in l or "Phase 2-LLM" in l]
+    llm_lines = [ln for ln in log_records if "Phase 1-LLM" in ln or "Phase 2-LLM" in ln]
     llm_summary = "\n".join(llm_lines) if llm_lines else ""
 
     out_filename = output_filename if llm_mode != "styleguide_only" else "(none – styleguide_only mode)"
@@ -333,16 +346,16 @@ def _default_model_for_provider(provider: str) -> str:
 def create_interface() -> gr.Blocks:
 
     with gr.Blocks(title="Format Transplant") as demo:
-
-        gr.Markdown("""
+        gr.Markdown(
+            """
 # 🎨 Format Transplant
 
 Apply the **complete formatting** of a blueprint document to the **content** of a source document — down to paragraph styles, page layout, margins, headers, footers, and footnotes.
 Optionally run an **LLM style pass** that learns editorial conventions from the blueprint and re-formats source paragraphs and footnotes accordingly.
-""")
+"""
+        )
 
         with gr.Row():
-
             # ── Left column: inputs ────────────────────────────────────
             with gr.Column(scale=1):
                 gr.Markdown("### 📋 Input files")
@@ -413,7 +426,8 @@ Optionally run an **LLM style pass** that learns editorial conventions from the 
 
         # ── LLM accordion ──────────────────────────────────────────────
         with gr.Accordion("🤖 LLM Style Pass  (optional)", open=False):
-            gr.Markdown("""
+            gr.Markdown(
+                """
 Select an LLM provider to add an **editorial style pass** on top of the structural format transplant:
 
 1. **Style guide generation** — the LLM reads a sample of the blueprint and produces a `styleguide.md`
@@ -424,7 +438,8 @@ Select an LLM provider to add an **editorial style pass** on top of the structur
    original runs in the transplanted document.
 
 Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-only transplant).
-""")
+"""
+            )
 
             with gr.Row():
                 llm_provider = gr.Dropdown(
@@ -452,22 +467,22 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
             def _fetch_models(provider, api_key):
                 if provider == "(none)":
                     return gr.update(choices=["auto"], value="auto")
-                
+
                 try:
                     # Temporary config to use for fetching
                     cfg = llm_config_from_args(provider, api_key=api_key)
                     client = MultiProviderLLMClient()
                     models = client.get_available_models(cfg)
-                    
+
                     if not models:
                         return gr.update(choices=["auto"], value="auto")
-                    
+
                     choices = [m["id"] for m in models]
                     # Also include the default model from PROVIDER_DEFAULTS if not in list
                     default_m = PROVIDER_DEFAULTS.get(provider, {}).get("model")
                     if default_m and default_m not in choices:
                         choices.insert(0, default_m)
-                    
+
                     return gr.update(choices=choices, value=choices[0])
                 except Exception as e:
                     logger.error(f"Fetch models failed: {e}")
@@ -476,7 +491,7 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
             fetch_models_btn.click(
                 fn=_fetch_models,
                 inputs=[llm_provider, llm_api_key],
-                outputs=[llm_model]
+                outputs=[llm_model],
             )
 
             with gr.Row():
@@ -530,7 +545,7 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
             def _on_provider_change(provider):
                 if provider == "(none)":
                     return gr.update(value="auto"), gr.update(value=15)
-                
+
                 defaults = PROVIDER_DEFAULTS.get(provider, {})
                 model = defaults.get("model", "auto")
                 batch = defaults.get("batch_size", 15)
@@ -548,7 +563,8 @@ Leave **Provider** at `(none)` to skip the LLM pass entirely (fast, structural-o
 
         # ── Help / docs ────────────────────────────────────────────────
         with gr.Accordion("How it works", open=False):
-            gr.Markdown("""
+            gr.Markdown(
+                """
 ### Data Sources
 
 | What comes from the **blueprint** | What comes from the **source** |
@@ -610,7 +626,8 @@ Blockzitat        = Intense Quote
 
 If a style isn't mapping correctly, copy its exact name from a `[EXTRACT]` line
 and add an override.
-""")
+"""
+            )
 
         # ── Wire button ────────────────────────────────────────────────
         run_btn.click(
@@ -645,7 +662,10 @@ if __name__ == "__main__":
     # Respect the GRADIO_SERVER_PORT environment variable if set (standard for HF Spaces)
     server_port = int(os.getenv("GRADIO_SERVER_PORT", 7860))
     demo.launch(
-        server_name="0.0.0.0",
+        # Binding to 0.0.0.0 is intentional: this app runs inside HF Spaces /
+        # docker containers where the gradio server must be reachable from
+        # outside the container.
+        server_name="0.0.0.0",  # nosec B104
         server_port=server_port,
         share=False,
     )

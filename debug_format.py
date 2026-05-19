@@ -27,7 +27,6 @@ import re
 import sys
 import zipfile
 from collections import Counter
-from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 # ── Dependency check ─────────────────────────────────────────────────────────
@@ -39,31 +38,40 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from docx import Document
-    from docx.oxml.ns import qn as docx_qn
+    from docx import Document  # noqa: F401  (availability probe)
+    from docx.oxml.ns import qn as docx_qn  # noqa: F401  (availability probe)
 except ImportError:
     print("Missing dependency: pip install python-docx")
     sys.exit(1)
 
 # ── Namespace helpers ─────────────────────────────────────────────────────────
 
-W    = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-W14  = "http://schemas.microsoft.com/office/word/2010/wordml"
+W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+W14 = "http://schemas.microsoft.com/office/word/2010/wordml"
 W_NS = {"w": W, "w14": W14}
 
-def w(tag: str)   -> str: return f"{{{W}}}{tag}"
-def w14(tag: str) -> str: return f"{{{W14}}}{tag}"
+
+def w(tag: str) -> str:
+    return f"{{{W}}}{tag}"
+
+
+def w14(tag: str) -> str:
+    return f"{{{W14}}}{tag}"
+
 
 def xpath(elem, expr: str) -> list:
     """XPath helper that works on both BaseOxmlElement and plain lxml._Element."""
     return etree._Element.xpath(elem, expr, namespaces=W_NS)
 
+
 def strip_ns(xml_str: str) -> str:
     """Remove xmlns:* declarations for readable output."""
     return re.sub(r' xmlns:[^=]+="[^"]*"', "", xml_str)
 
+
 def _get_text(elem) -> str:
     return "".join(t.text or "" for t in elem.iter(w("t")))
+
 
 def _half_pt(val: str) -> str:
     """Convert half-point string to pt string."""
@@ -72,12 +80,14 @@ def _half_pt(val: str) -> str:
     except (ValueError, TypeError):
         return val or ""
 
+
 def _emu_pt(val: str) -> str:
     """Convert EMU string to pt string (1pt = 12700 EMU)."""
     try:
         return f"{int(val) / 12700:.1f}pt"
     except (ValueError, TypeError):
         return val or ""
+
 
 def _twip_pt(val: str) -> str:
     """Convert twip string to pt string (1pt = 20 twips)."""
@@ -86,46 +96,57 @@ def _twip_pt(val: str) -> str:
     except (ValueError, TypeError):
         return val or ""
 
+
 # ── XML part loader ───────────────────────────────────────────────────────────
+
 
 def load_xml(path: str, part: str):
     """Open a ZIP archive and parse one XML part; return the lxml root."""
     with zipfile.ZipFile(path) as z:
         return etree.fromstring(z.read(part))
 
+
 def zip_names(path: str) -> Set[str]:
     with zipfile.ZipFile(path) as z:
         return set(z.namelist())
+
 
 def zip_read(path: str, part: str) -> bytes:
     with zipfile.ZipFile(path) as z:
         return z.read(part)
 
+
 # ── Style helpers ─────────────────────────────────────────────────────────────
+
 
 def load_style_index(path: str) -> Dict[str, dict]:
     """Return dict style_id → {name, type, outline_level, sz_pt, bold, italic}."""
     root = load_xml(path, "word/styles.xml")
     idx: Dict[str, dict] = {}
     for s in root.iter(w("style")):
-        sid  = s.get(w("styleId"), "")
+        sid = s.get(w("styleId"), "")
         nm_e = s.find(w("name"))
-        nm   = nm_e.get(w("val"), "") if nm_e is not None else ""
+        nm = nm_e.get(w("val"), "") if nm_e is not None else ""
         stype = s.get(w("type"), "")
 
         ol_e = s.find(f".//{w('outlineLvl')}")
-        ol   = int(ol_e.get(w("val"), "-1")) if ol_e is not None else -1
+        ol = int(ol_e.get(w("val"), "-1")) if ol_e is not None else -1
 
         sz_e = s.find(f".//{w('sz')}")
-        sz   = _half_pt(sz_e.get(w("val"), "")) if sz_e is not None else ""
+        sz = _half_pt(sz_e.get(w("val"), "")) if sz_e is not None else ""
 
-        b_e  = s.find(f".//{w('b')}")
-        i_e  = s.find(f".//{w('i')}")
+        b_e = s.find(f".//{w('b')}")
+        i_e = s.find(f".//{w('i')}")
         idx[sid] = {
-            "name": nm, "type": stype, "outline_level": ol,
-            "sz": sz, "bold": b_e is not None, "italic": i_e is not None,
+            "name": nm,
+            "type": stype,
+            "outline_level": ol,
+            "sz": sz,
+            "bold": b_e is not None,
+            "italic": i_e is not None,
         }
     return idx
+
 
 def style_name_from_pPr(pPr, style_idx: Dict[str, dict]) -> str:
     if pPr is None:
@@ -141,6 +162,7 @@ def style_name_from_pPr(pPr, style_idx: Dict[str, dict]) -> str:
 # SUBCOMMAND: inspect
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def cmd_inspect(args):
     path = args.doc
     print(f"\nInspecting: {path}")
@@ -148,12 +170,12 @@ def cmd_inspect(args):
 
     with zipfile.ZipFile(path) as z:
         names = set(z.namelist())
-        doc_xml      = z.read("word/document.xml")
-        settings_xml = z.read("word/settings.xml")
+        doc_xml = z.read("word/document.xml")
+        z.read("word/settings.xml")
 
     style_idx = load_style_index(path)
-    root      = etree.fromstring(doc_xml)
-    body      = root.find(w("body"))
+    root = etree.fromstring(doc_xml)
+    body = root.find(w("body"))
 
     # ── ZIP inventory ────────────────────────────────────────────────────────
     xml_parts = sorted(n for n in names if n.endswith(".xml") or n.endswith(".rels"))
@@ -172,15 +194,16 @@ def cmd_inspect(args):
         h_val = _twip_pt(pgSz.get(w("h"), ""))
         print(f"   Page size: {w_val} × {h_val}")
     if pgMar is not None:
-        l = _twip_pt(pgMar.get(w("left"),   ""))
-        r = _twip_pt(pgMar.get(w("right"),  ""))
-        t = _twip_pt(pgMar.get(w("top"),    ""))
-        b_ = _twip_pt(pgMar.get(w("bottom"), ""))
-        print(f"   Margins: L={l} R={r} T={t} B={b_}")
+        left = _twip_pt(pgMar.get(w("left"), ""))
+        right = _twip_pt(pgMar.get(w("right"), ""))
+        top = _twip_pt(pgMar.get(w("top"), ""))
+        bottom = _twip_pt(pgMar.get(w("bottom"), ""))
+        print(f"   Margins: L={left} R={right} T={top} B={bottom}")
 
     # ── Styles summary ───────────────────────────────────────────────────────
-    para_styles = [(v["name"], k, v["outline_level"], v["sz"], v["bold"])
-                   for k, v in style_idx.items() if v["type"] == "paragraph"]
+    para_styles = [
+        (v["name"], k, v["outline_level"], v["sz"], v["bold"]) for k, v in style_idx.items() if v["type"] == "paragraph"
+    ]
     char_styles = [v["name"] for v in style_idx.values() if v["type"] == "character"]
     print(f"\n── Styles: {len(para_styles)} paragraph, {len(char_styles)} character ──")
     heading_styles = [(nm, sid, ol) for nm, sid, ol, *_ in para_styles if ol >= 0]
@@ -195,10 +218,10 @@ def cmd_inspect(args):
     print("\n── Body paragraphs ──")
     style_freq: Dict[str, int] = {}
     all_paras = list(body.findall(w("p")))
-    tables    = list(body.findall(w("tbl")))
+    tables = list(body.findall(w("tbl")))
     for p in all_paras:
-        pPr  = p.find(w("pPr"))
-        snm  = style_name_from_pPr(pPr, style_idx) or "(default)"
+        pPr = p.find(w("pPr"))
+        snm = style_name_from_pPr(pPr, style_idx) or "(default)"
         style_freq[snm] = style_freq.get(snm, 0) + 1
     print(f"   {len(all_paras)} paragraphs, {len(tables)} tables")
     print("   Style frequencies:")
@@ -209,8 +232,7 @@ def cmd_inspect(args):
     fn_count = 0
     if "word/footnotes.xml" in names:
         fn_root = etree.fromstring(zip_read(path, "word/footnotes.xml"))
-        fn_count = sum(1 for fn in fn_root
-                       if int(fn.get(w("id"), "0") or "0") > 0)
+        fn_count = sum(1 for fn in fn_root if int(fn.get(w("id"), "0") or "0") > 0)
     print(f"\n── Footnotes: {fn_count} ──")
     print()
 
@@ -218,6 +240,7 @@ def cmd_inspect(args):
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUBCOMMAND: check
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def cmd_check(args):
     path = args.doc
@@ -245,11 +268,10 @@ def cmd_check(args):
             ok_msgs.append(f"All {len(xml_parts)} XML/rels parts parse cleanly")
 
         # ── 2. rsid values vs settings.xml <w:rsids> ─────────────────────────
-        doc_xml  = z.read("word/document.xml")
+        doc_xml = z.read("word/document.xml")
         doc_root = etree.fromstring(doc_xml)
 
-        rsid_keys = [f"{{{W}}}{a}" for a in
-                     ("rsidR", "rsidRPr", "rsidDel", "rsidRDefault", "rsidRPrChange")]
+        rsid_keys = [f"{{{W}}}{a}" for a in ("rsidR", "rsidRPr", "rsidDel", "rsidRDefault", "rsidRPrChange")]
         body_rsids: Set[str] = set()
         for p in doc_root.iter(w("p")):
             for key in rsid_keys:
@@ -297,13 +319,9 @@ def cmd_check(args):
         if dupes:
             for pid, cnt in list(dupes.items())[:3]:
                 parts = [n for p, n in all_para_ids if p == pid]
-                issues.append(
-                    f"Duplicate w14:paraId {pid!r} appears {cnt}× in: {parts}"
-                )
+                issues.append(f"Duplicate w14:paraId {pid!r} appears {cnt}× in: {parts}")
         else:
-            ok_msgs.append(
-                f"{len(all_para_ids)} w14:paraId values across all parts, all unique"
-            )
+            ok_msgs.append(f"{len(all_para_ids)} w14:paraId values across all parts, all unique")
 
         # ── 4. Relationship targets present in ZIP ────────────────────────────
         rels_missing: List[Tuple[str, str, str]] = []
@@ -343,23 +361,19 @@ def cmd_check(args):
         # ── 5. Body structure ─────────────────────────────────────────────────
         body = doc_root.find(w("body"))
         if body is not None:
-            children  = list(body)
+            children = list(body)
             valid_tags = {w("p"), w("tbl"), w("sectPr")}
-            bad_tags  = [c.tag for c in children if c.tag not in valid_tags]
+            bad_tags = [c.tag for c in children if c.tag not in valid_tags]
             sect_last = bool(children) and children[-1].tag == w("sectPr")
             if bad_tags:
                 issues.append(f"Body has unexpected element tags: {sorted(set(bad_tags))}")
             elif not sect_last and any(c.tag == w("sectPr") for c in children):
                 issues.append("Body <w:sectPr> is not the last child")
             else:
-                ok_msgs.append(
-                    f"Body structure valid ({len(children)} children, "
-                    f"sectPr at end: {sect_last})"
-                )
+                ok_msgs.append(f"Body structure valid ({len(children)} children, sectPr at end: {sect_last})")
 
         # ── 6. Bookmark ID uniqueness ─────────────────────────────────────────
-        bm_ids = [p.get(w("id")) for p in doc_root.iter(w("bookmarkStart"))
-                  if p.get(w("id"))]
+        bm_ids = [p.get(w("id")) for p in doc_root.iter(w("bookmarkStart")) if p.get(w("id"))]
         bm_dupes = {k: v for k, v in Counter(bm_ids).items() if v > 1}
         if bm_dupes:
             for bid, cnt in list(bm_dupes.items())[:3]:
@@ -369,24 +383,17 @@ def cmd_check(args):
 
         # ── 7. Inline relationship references in body ─────────────────────────
         body_xml_str = z.read("word/document.xml").decode(errors="replace")
-        r_ids_in_body = set(re.findall(
-            r'r:(?:id|embed|link)="(rId\d+)"', body_xml_str
-        ))
+        r_ids_in_body = set(re.findall(r'r:(?:id|embed|link)="(rId\d+)"', body_xml_str))
         rels_file = "word/_rels/document.xml.rels"
         if rels_file in names:
             rels_xml_str = z.read(rels_file).decode(errors="replace")
-            missing_rids = [rid for rid in r_ids_in_body
-                            if f'Id="{rid}"' not in rels_xml_str]
+            missing_rids = [rid for rid in r_ids_in_body if f'Id="{rid}"' not in rels_xml_str]
             if missing_rids:
                 issues.append(
-                    f"Body references {len(missing_rids)} rId(s) not in "
-                    f"document.xml.rels: {sorted(missing_rids)}"
+                    f"Body references {len(missing_rids)} rId(s) not in document.xml.rels: {sorted(missing_rids)}"
                 )
             else:
-                ok_msgs.append(
-                    f"{len(r_ids_in_body)} body relationship reference(s), "
-                    f"all resolved"
-                )
+                ok_msgs.append(f"{len(r_ids_in_body)} body relationship reference(s), all resolved")
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print()
@@ -407,14 +414,15 @@ def cmd_check(args):
 # SUBCOMMAND: headings
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def cmd_headings(args):
     path = args.doc
     print(f"\nHeading analysis: {path}")
     print("=" * 72)
 
     style_idx = load_style_index(path)
-    doc_root  = load_xml(path, "word/document.xml")
-    body      = doc_root.find(w("body"))
+    doc_root = load_xml(path, "word/document.xml")
+    body = doc_root.find(w("body"))
 
     # ── Styles with outlineLvl ───────────────────────────────────────────────
     print("\n── Styles with explicit outline level (outlineLvl in XML) ──")
@@ -439,13 +447,13 @@ def cmd_headings(args):
     body_sizes: List[float] = []
 
     for p in body.findall(w("p")):
-        pPr     = p.find(w("pPr"))
-        text    = _get_text(p).strip()
+        pPr = p.find(w("pPr"))
+        text = _get_text(p).strip()
         if not text:
             continue
 
         # Paragraph-default bold and size
-        ppr_bold   = False
+        ppr_bold = False
         ppr_sz_pt: Optional[float] = None
         if pPr is not None:
             ppr_rPr = pPr.find(w("rPr"))
@@ -459,16 +467,15 @@ def cmd_headings(args):
                         pass
 
         # Run-level bold and size
-        text_runs = [r for r in p.findall(w("r"))
-                     if _get_text(r).strip()]
+        text_runs = [r for r in p.findall(w("r")) if _get_text(r).strip()]
         run_bold_flags = []
         run_szs: List[float] = []
         for r in text_runs:
-            rPr  = r.find(w("rPr"))
+            rPr = r.find(w("rPr"))
             r_bold = False
             if rPr is not None:
                 r_bold = rPr.find(w("b")) is not None
-                sz_el  = rPr.find(w("sz"))
+                sz_el = rPr.find(w("sz"))
                 if sz_el is not None:
                     try:
                         run_szs.append(int(sz_el.get(w("val"), "0")) / 2.0)
@@ -476,9 +483,9 @@ def cmd_headings(args):
                         pass
             run_bold_flags.append(r_bold or ppr_bold)
 
-        all_bold       = bool(text_runs) and all(run_bold_flags)
+        all_bold = bool(text_runs) and all(run_bold_flags)
         effective_bold = all_bold or ppr_bold
-        effective_sz   = (sum(run_szs) / len(run_szs)) if run_szs else ppr_sz_pt
+        effective_sz = (sum(run_szs) / len(run_szs)) if run_szs else ppr_sz_pt
 
         if effective_bold and 0 < len(text) < 100:
             reason = "pPr/rPr bold" if (ppr_bold and not all_bold) else "all-runs bold"
@@ -491,8 +498,7 @@ def cmd_headings(args):
     else:
         body_sz = Counter(body_sizes).most_common(1)[0][0] if body_sizes else 0.0
         unique_szs = sorted({sz for _, sz, _ in candidates if sz > 0}, reverse=True)
-        heading_szs = [sz for sz in unique_szs
-                       if body_sz == 0.0 or sz > body_sz + 0.4]
+        heading_szs = [sz for sz in unique_szs if body_sz == 0.0 or sz > body_sz + 0.4]
         if not heading_szs:
             heading_szs = [0.0]
 
@@ -504,12 +510,11 @@ def cmd_headings(args):
                     return lvl_
             return len(heading_szs)
 
-        print(f"  Body text reference size: "
-              f"{body_sz:.1f}pt  (from {len(body_sizes)} non-heading para(s))")
+        print(f"  Body text reference size: {body_sz:.1f}pt  (from {len(body_sizes)} non-heading para(s))")
         print(f"  Heading size tiers: {[f'{s:.1f}pt' for s in heading_szs] if heading_szs != [0.0] else ['all same']}")
         print()
         print(f"  {'Lvl':<5} {'Size':>7}  {'Signal':<16}  Text")
-        print(f"  {'-'*5} {'-'*7}  {'-'*16}  {'-'*42}")
+        print(f"  {'-' * 5} {'-' * 7}  {'-' * 16}  {'-' * 42}")
         for text, sz, reason in candidates:
             lvl = _lvl(sz)
             sz_str = f"{sz:.1f}pt" if sz else "n/a"
@@ -522,9 +527,10 @@ def cmd_headings(args):
 # SUBCOMMAND: footnotes
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def cmd_footnotes(args):
-    path    = args.doc
-    target  = args.id  # optional footnote ID filter
+    path = args.doc
+    target = args.id  # optional footnote ID filter
 
     print(f"\nFootnote structure: {path}")
     print("=" * 72)
@@ -535,7 +541,7 @@ def cmd_footnotes(args):
         return
 
     style_idx = load_style_index(path)
-    fn_root   = etree.fromstring(zip_read(path, "word/footnotes.xml"))
+    fn_root = etree.fromstring(zip_read(path, "word/footnotes.xml"))
 
     fn_count = 0
     for fn in fn_root:
@@ -564,31 +570,34 @@ def cmd_footnotes(args):
             if pPr is not None:
                 ind = pPr.find(w("ind"))
                 if ind is not None:
-                    ind_left  = _twip_pt(ind.get(w("left"),      ""))
-                    ind_hang  = _twip_pt(ind.get(w("hanging"),   ""))
+                    ind_left = _twip_pt(ind.get(w("left"), ""))
+                    ind_hang = _twip_pt(ind.get(w("hanging"), ""))
                     ind_first = _twip_pt(ind.get(w("firstLine"), ""))
 
             ind_str = ""
-            if ind_left:  ind_str += f"left={ind_left}"
-            if ind_hang:  ind_str += f" hanging={ind_hang}"
-            if ind_first: ind_str += f" firstLine={ind_first}"
+            if ind_left:
+                ind_str += f"left={ind_left}"
+            if ind_hang:
+                ind_str += f" hanging={ind_hang}"
+            if ind_first:
+                ind_str += f" firstLine={ind_first}"
 
             print(f"  Para {pi}: style={style_nm!r:28} indent={ind_str.strip() or 'none'}")
 
             # Runs
             for ri, r in enumerate(p.findall(w("r"))):
-                rPr       = r.find(w("rPr"))
-                t_text    = _get_text(r)
-                fn_ref    = r.find(f".//{w('footnoteRef')}")
+                rPr = r.find(w("rPr"))
+                t_text = _get_text(r)
+                fn_ref = r.find(f".//{w('footnoteRef')}")
                 fn_ref_in = r.find(f".//{w('footnoteReference')}")
-                has_tab   = r.find(f".//{w('tab')}") is not None
+                has_tab = r.find(f".//{w('tab')}") is not None
 
                 rStyle_val = ""
-                sz_val     = ""
-                va_val     = ""
-                bold       = False
-                italic     = False
-                pos_val    = ""
+                sz_val = ""
+                va_val = ""
+                bold = False
+                italic = False
+                pos_val = ""
 
                 if rPr is not None:
                     rs = rPr.find(w("rStyle"))
@@ -600,19 +609,25 @@ def cmd_footnotes(args):
                     va = rPr.find(w("vertAlign"))
                     if va is not None:
                         va_val = va.get(w("val"), "")
-                    bold   = rPr.find(w("b"))   is not None
-                    italic = rPr.find(w("i"))   is not None
-                    pos    = rPr.find(w("position"))
+                    bold = rPr.find(w("b")) is not None
+                    italic = rPr.find(w("i")) is not None
+                    pos = rPr.find(w("position"))
                     if pos is not None:
                         pos_val = pos.get(w("val"), "")
 
                 details: List[str] = []
-                if rStyle_val: details.append(f"rStyle={rStyle_val!r}")
-                if sz_val:     details.append(f"sz={sz_val}")
-                if va_val:     details.append(f"vertAlign={va_val}")
-                if pos_val:    details.append(f"position={pos_val}")
-                if bold:       details.append("bold")
-                if italic:     details.append("italic")
+                if rStyle_val:
+                    details.append(f"rStyle={rStyle_val!r}")
+                if sz_val:
+                    details.append(f"sz={sz_val}")
+                if va_val:
+                    details.append(f"vertAlign={va_val}")
+                if pos_val:
+                    details.append(f"position={pos_val}")
+                if bold:
+                    details.append("bold")
+                if italic:
+                    details.append("italic")
 
                 if fn_ref is not None:
                     label = "(footnoteRef marker)"
@@ -653,55 +668,55 @@ def cmd_footnotes(args):
 # SUBCOMMAND: compare
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def cmd_compare(args):
     a_path = args.doc_a
     b_path = args.doc_b
 
-    print(f"\nComparing:")
+    print("\nComparing:")
     print(f"  A: {a_path}")
     print(f"  B: {b_path}")
     print("=" * 72)
 
     def _summary(path: str) -> dict:
         style_idx = load_style_index(path)
-        root      = load_xml(path, "word/document.xml")
-        body      = root.find(w("body"))
+        root = load_xml(path, "word/document.xml")
+        body = root.find(w("body"))
 
         heading_styles = sorted(
-            [(v["outline_level"], v["name"], v["sz"])
-             for v in style_idx.values()
-             if v["type"] == "paragraph" and v["outline_level"] >= 0],
-            key=lambda x: x[0]
+            [
+                (v["outline_level"], v["name"], v["sz"])
+                for v in style_idx.values()
+                if v["type"] == "paragraph" and v["outline_level"] >= 0
+            ],
+            key=lambda x: x[0],
         )
 
-        paras  = list(body.findall(w("p")))
+        paras = list(body.findall(w("p")))
         tables = list(body.findall(w("tbl")))
 
         fn_count = 0
         if "word/footnotes.xml" in zip_names(path):
-            fn_root  = etree.fromstring(zip_read(path, "word/footnotes.xml"))
-            fn_count = sum(1 for fn in fn_root
-                           if int(fn.get(w("id"), "0") or "0") > 0)
+            fn_root = etree.fromstring(zip_read(path, "word/footnotes.xml"))
+            fn_count = sum(1 for fn in fn_root if int(fn.get(w("id"), "0") or "0") > 0)
 
         # Style frequency in body
         style_freq: Dict[str, int] = {}
         for p in paras:
             pPr = p.find(w("pPr"))
-            nm  = style_name_from_pPr(pPr, style_idx) or "(default)"
+            nm = style_name_from_pPr(pPr, style_idx) or "(default)"
             style_freq[nm] = style_freq.get(nm, 0) + 1
 
         # para_styles set
-        para_style_names = {v["name"] for v in style_idx.values()
-                            if v["type"] == "paragraph"}
-        char_style_names = {v["name"] for v in style_idx.values()
-                            if v["type"] == "character"}
+        para_style_names = {v["name"] for v in style_idx.values() if v["type"] == "paragraph"}
+        char_style_names = {v["name"] for v in style_idx.values() if v["type"] == "character"}
 
         return {
             "heading_styles": heading_styles,
-            "para_count":  len(paras),
+            "para_count": len(paras),
             "table_count": len(tables),
-            "fn_count":    fn_count,
-            "style_freq":  style_freq,
+            "fn_count": fn_count,
+            "style_freq": style_freq,
             "para_styles": para_style_names,
             "char_styles": char_style_names,
         }
@@ -711,13 +726,10 @@ def cmd_compare(args):
 
     # ── Heading style comparison ─────────────────────────────────────────────
     print("\n── Heading styles (from outlineLvl) ──")
-    max_len = max(len(a["heading_styles"]), len(b["heading_styles"]), 1)
+    max(len(a["heading_styles"]), len(b["heading_styles"]), 1)
     print(f"  {'Level':<6}  {'A':^40}  {'B':^40}")
-    print(f"  {'-'*6}  {'-'*40}  {'-'*40}")
-    all_levels = sorted(set(
-        [ol for ol, _, _ in a["heading_styles"]] +
-        [ol for ol, _, _ in b["heading_styles"]]
-    ))
+    print(f"  {'-' * 6}  {'-' * 40}  {'-' * 40}")
+    all_levels = sorted(set([ol for ol, _, _ in a["heading_styles"]] + [ol for ol, _, _ in b["heading_styles"]]))
     a_map = {ol: (nm, sz) for ol, nm, sz in a["heading_styles"]}
     b_map = {ol: (nm, sz) for ol, nm, sz in b["heading_styles"]}
     for ol in all_levels:
@@ -747,14 +759,14 @@ def cmd_compare(args):
     print("\n── Top styles used in body paragraphs ──")
     all_style_nms = sorted(
         set(a["style_freq"]) | set(b["style_freq"]),
-        key=lambda n: -(a["style_freq"].get(n, 0) + b["style_freq"].get(n, 0))
+        key=lambda n: -(a["style_freq"].get(n, 0) + b["style_freq"].get(n, 0)),
     )
     print(f"  {'Style name':40}  {'A':>6}  {'B':>6}")
-    print(f"  {'-'*40}  {'-'*6}  {'-'*6}")
+    print(f"  {'-' * 40}  {'-' * 6}  {'-' * 6}")
     for nm in all_style_nms[:20]:
         a_cnt = a["style_freq"].get(nm, 0)
         b_cnt = b["style_freq"].get(nm, 0)
-        flag  = " ←" if (a_cnt > 0) != (b_cnt > 0) else ""
+        flag = " ←" if (a_cnt > 0) != (b_cnt > 0) else ""
         print(f"  {nm!s:40}  {a_cnt:>6}  {b_cnt:>6}{flag}")
 
     print()
@@ -764,8 +776,9 @@ def cmd_compare(args):
 # SUBCOMMAND: styles
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def cmd_styles(args):
-    path      = args.doc
+    path = args.doc
     type_filt = getattr(args, "type", None)
 
     print(f"\nStyle dump: {path}")
@@ -776,7 +789,7 @@ def cmd_styles(args):
     type_map = {
         "paragraph": "paragraph",
         "character": "character",
-        "table":     "table",
+        "table": "table",
         "numbering": "numbering",
     }
     filt = type_map.get(type_filt or "", "")
@@ -786,15 +799,15 @@ def cmd_styles(args):
         if filt and info["type"] != filt:
             continue
         ol_str = f"H{info['outline_level'] + 1}" if info["outline_level"] >= 0 else "  "
-        b_str  = "B" if info["bold"]   else " "
-        i_str  = "I" if info["italic"] else " "
+        b_str = "B" if info["bold"] else " "
+        i_str = "I" if info["italic"] else " "
         rows.append((info["type"], ol_str, info["sz"], b_str, i_str, info["name"], sid))
 
     type_order = {"paragraph": 0, "character": 1, "table": 2, "numbering": 3}
     rows.sort(key=lambda r: (type_order.get(r[0], 9), r[1], r[5]))
 
     print(f"\n  {'Type':12}  {'Lvl':4}  {'Size':7}  {'BI':2}  {'Style name':40}  {'ID'}")
-    print(f"  {'-'*12}  {'-'*4}  {'-'*7}  {'-'*2}  {'-'*40}  {'-'*30}")
+    print(f"  {'-' * 12}  {'-' * 4}  {'-' * 7}  {'-' * 2}  {'-' * 40}  {'-' * 30}")
     for stype, ol_str, sz, b_str, i_str, nm, sid in rows:
         print(f"  {stype:12}  {ol_str:4}  {sz:7}  {b_str}{i_str}   {nm!s:40}  {sid}")
 
@@ -804,6 +817,7 @@ def cmd_styles(args):
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUBCOMMAND: xml
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def cmd_xml(args):
     path = args.doc
@@ -852,6 +866,7 @@ def cmd_xml(args):
 # CLI
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="debug_format.py",
@@ -869,36 +884,32 @@ def main() -> int:
     # check
     p_check = sub.add_parser(
         "check",
-        help="Corruption/validity checks (rsids, paraIds, rels, XML, body structure)"
+        help="Corruption/validity checks (rsids, paraIds, rels, XML, body structure)",
     )
     p_check.add_argument("doc", help="DOCX file")
     p_check.set_defaults(func=cmd_check)
 
     # headings
-    p_head = sub.add_parser(
-        "headings",
-        help="Heading structure analysis + property-based inference preview"
-    )
+    p_head = sub.add_parser("headings", help="Heading structure analysis + property-based inference preview")
     p_head.add_argument("doc", help="DOCX file")
     p_head.set_defaults(func=cmd_headings)
 
     # footnotes
     p_fn = sub.add_parser(
         "footnotes",
-        help="Detailed footnote structure (run styles, separators, indentation)"
+        help="Detailed footnote structure (run styles, separators, indentation)",
     )
     p_fn.add_argument("doc", help="DOCX file")
-    p_fn.add_argument("--id",  type=int, default=None, metavar="N",
-                      help="Show only footnote #N")
-    p_fn.add_argument("--all-paras", action="store_true",
-                      help="Show all paragraphs per footnote (default: first only)")
+    p_fn.add_argument("--id", type=int, default=None, metavar="N", help="Show only footnote #N")
+    p_fn.add_argument(
+        "--all-paras",
+        action="store_true",
+        help="Show all paragraphs per footnote (default: first only)",
+    )
     p_fn.set_defaults(func=cmd_footnotes)
 
     # compare
-    p_cmp = sub.add_parser(
-        "compare",
-        help="Side-by-side comparison of two documents"
-    )
+    p_cmp = sub.add_parser("compare", help="Side-by-side comparison of two documents")
     p_cmp.add_argument("doc_a", help="First DOCX (e.g. blueprint)")
     p_cmp.add_argument("doc_b", help="Second DOCX (e.g. source)")
     p_cmp.set_defaults(func=cmd_compare)
@@ -907,22 +918,23 @@ def main() -> int:
     p_styles = sub.add_parser("styles", help="Full style dump")
     p_styles.add_argument("doc", help="DOCX file")
     p_styles.add_argument(
-        "--type", choices=["paragraph", "character", "table", "numbering"],
-        default=None, help="Filter by style type"
+        "--type",
+        choices=["paragraph", "character", "table", "numbering"],
+        default=None,
+        help="Filter by style type",
     )
     p_styles.set_defaults(func=cmd_styles)
 
     # xml
-    p_xml = sub.add_parser(
-        "xml",
-        help="Pretty-print any XML part from the ZIP (e.g. word/document.xml)"
-    )
-    p_xml.add_argument("doc",  help="DOCX file")
+    p_xml = sub.add_parser("xml", help="Pretty-print any XML part from the ZIP (e.g. word/document.xml)")
+    p_xml.add_argument("doc", help="DOCX file")
     p_xml.add_argument("part", help="ZIP entry path, e.g. word/styles.xml")
-    p_xml.add_argument("--strip-ns", action="store_true",
-                       help="Remove xmlns:* declarations for readability")
-    p_xml.add_argument("--exact", action="store_true",
-                       help="Require exact ZIP entry path match")
+    p_xml.add_argument(
+        "--strip-ns",
+        action="store_true",
+        help="Remove xmlns:* declarations for readability",
+    )
+    p_xml.add_argument("--exact", action="store_true", help="Require exact ZIP entry path match")
     p_xml.set_defaults(func=cmd_xml)
 
     args = parser.parse_args()

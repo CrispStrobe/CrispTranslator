@@ -1,0 +1,69 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# Default selection is fine; we just narrow per-file below.
+select = ["E", "F", "W"]
+# E501 is intentionally disabled — Black handles line length at the AST
+# level. The only E501 hits we ever see are inside string literals (LLM
+# prompts, XML fixtures, Markdown) where wrapping changes visible output.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# translator.py uses check_library() to load optional ML deps (ctranslate2,
+# transformers, etc.) at runtime via exec, then references them by name.
+# Ruff (correctly) can't see those at static-analysis time.
+"translator.py" = ["F821"]
+# debug_format.py prints raw OOXML samples that aren't actually code paths.
+"debug_format.py" = ["F541"]
+# tests import their helpers for side effects (sys.path setup).
+"tests/_helpers.py" = ["F401"]
+"tests/*.py" = ["F401"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_configs = true
+# Pre-existing files use optional deps and dynamic dispatch heavily; treat
+# the new tooling-level files strictly and the application code permissively.
+strict_optional = false
+disallow_untyped_defs = false
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+module = ["translator", "format_transplant", "debug_format", "transplant-app", "translator-app"]
+ignore_errors = true
+
+[tool.bandit]
+skips = ["B101", "B404", "B603"]  # asserts in tests; subprocess use is intentional
+exclude_dirs = ["tests"]
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+    "missing-docstring",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-statements",
+    "too-many-instance-attributes",
+    "too-many-positional-arguments",
+    "line-too-long",
+    "fixme",
+    "broad-exception-caught",
+    "logging-fstring-interpolation",
+    "import-outside-toplevel",
+    "duplicate-code",
+    "c-extension-no-member",  # lxml.etree members aren't visible to pylint
+]
+
+[tool.pylint.FORMAT]
+max-line-length = 120
+
+[tool.pylint.MASTER]
+extension-pkg-allow-list = ["lxml"]

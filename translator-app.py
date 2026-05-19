@@ -16,23 +16,17 @@ from typing import Optional, Tuple
 import tempfile
 
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Import from translator.py
-from translator import (
-    UltimateDocumentTranslator,
-    TranslationMode,
-    TranslationBackend,
-    AlignerBackend
-)
+# Import from translator.py — intentionally after logging.basicConfig so the
+# library logger picks up our format.
+from translator import UltimateDocumentTranslator, TranslationMode  # noqa: E402
 
 # ============================================================================
 # ENVIRONMENT SETUP
 # ============================================================================
+
 
 def check_and_setup_environment():
     """
@@ -40,10 +34,11 @@ def check_and_setup_environment():
     Returns status messages.
     """
     status_messages = []
-    
+
     # 1. Check CTranslate2
     try:
-        import ctranslate2
+        import ctranslate2  # noqa: F401  (availability probe)
+
         status_messages.append("✓ CTranslate2 installed")
     except ImportError:
         status_messages.append("⚠ CTranslate2 not found - installing...")
@@ -52,7 +47,7 @@ def check_and_setup_environment():
             status_messages.append("✓ CTranslate2 installed successfully")
         except Exception as e:
             status_messages.append(f"✗ CTranslate2 installation failed: {e}")
-    
+
     # 2. Check fast_align (optional, complex to build on HF Spaces)
     fast_align_path = shutil.which("fast_align")
     if fast_align_path:
@@ -61,7 +56,7 @@ def check_and_setup_environment():
         status_messages.append("ℹ fast_align not available (optional - will use other aligners)")
         # Note: Building fast_align on HF Spaces is challenging due to build dependencies
         # We'll rely on the Python-based aligners instead
-    
+
     # 3. Check for API keys (optional)
     if os.getenv("OPENAI_API_KEY"):
         status_messages.append("✓ OpenAI API key detected")
@@ -69,8 +64,9 @@ def check_and_setup_environment():
         status_messages.append("✓ Anthropic API key detected")
     if not os.getenv("OPENAI_API_KEY") and not os.getenv("ANTHROPIC_API_KEY"):
         status_messages.append("ℹ No LLM API keys found (LLM modes will be unavailable)")
-    
+
     return "\n".join(status_messages)
+
 
 # Run setup on startup
 SETUP_STATUS = check_and_setup_environment()
@@ -79,6 +75,7 @@ logger.info(f"Setup complete:\n{SETUP_STATUS}")
 # ============================================================================
 # TRANSLATION FUNCTION
 # ============================================================================
+
 
 async def translate_document_async(
     input_file,
@@ -90,74 +87,74 @@ async def translate_document_async(
     aligner: str,
     llm_provider: Optional[str],
     llm_model: Optional[str] = None,
-    progress=gr.Progress()
+    progress=gr.Progress(),
 ) -> Tuple[Optional[str], str]:
     """
     Asynchronous document translation with progress tracking.
-    
+
     Returns:
         Tuple of (output_file_path, log_messages)
     """
-    
+
     if input_file is None:
         return None, "❌ Error: No file uploaded"
-    
+
     # Create temp directory for processing
     temp_dir = Path(tempfile.mkdtemp())
-    
+
     try:
         # Setup paths
         input_path = Path(input_file.name)
         output_filename = f"{input_path.stem}_translated_{source_lang}_{target_lang}.docx"
         output_path = temp_dir / output_filename
-        
+
         # Validate file type
-        if not input_path.suffix.lower() == '.docx':
+        if not input_path.suffix.lower() == ".docx":
             return None, "❌ Error: Only .docx files are supported"
-        
+
         # Map UI selections to enums
         mode_map = {
-            'NMT Only': TranslationMode.NMT_ONLY,
-            'LLM with Alignment': TranslationMode.LLM_WITH_ALIGN,
-            'LLM without Alignment': TranslationMode.LLM_WITHOUT_ALIGN,
-            'Hybrid (Recommended)': TranslationMode.HYBRID
+            "NMT Only": TranslationMode.NMT_ONLY,
+            "LLM with Alignment": TranslationMode.LLM_WITH_ALIGN,
+            "LLM without Alignment": TranslationMode.LLM_WITHOUT_ALIGN,
+            "Hybrid (Recommended)": TranslationMode.HYBRID,
         }
-        
+
         # Setup logging capture
         log_messages = []
-        
+
         class LogCapture(logging.Handler):
             def emit(self, record):
                 log_messages.append(self.format(record))
-        
+
         log_handler = LogCapture()
-        log_handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
+        log_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
         logging.getLogger().addHandler(log_handler)
-        
+
         progress(0.1, desc="Initializing translator...")
-        
+
         # Initialize translator
         translator = UltimateDocumentTranslator(
             src_lang=source_lang,
             tgt_lang=target_lang,
             mode=mode_map[mode],
             nmt_backend=nmt_backend.lower() if nmt_backend != "Auto" else "auto",
-            llm_provider=llm_provider.lower() if llm_provider and llm_provider != "None" else None,
+            llm_provider=(llm_provider.lower() if llm_provider and llm_provider != "None" else None),
             llm_model=llm_model if llm_model and llm_model != "default" else None,
             aligner=aligner.lower() if aligner != "Auto" else "auto",
-            nllb_model_size=nllb_size
+            nllb_model_size=nllb_size,
         )
-        
+
         progress(0.2, desc="Processing document...")
-        
+
         # Translate
         await translator.translate_document(input_path, output_path)
-        
+
         progress(1.0, desc="Translation complete!")
-        
+
         # Cleanup log handler
         logging.getLogger().removeHandler(log_handler)
-        
+
         # Format log output
         log_output = "\n".join(log_messages[-50:])  # Last 50 messages
         success_msg = f"""
@@ -172,23 +169,23 @@ async def translate_document_async(
 Recent Logs:
 {log_output}
 """
-        
+
         return str(output_path), success_msg
-        
+
     except Exception as e:
         error_msg = f"❌ Translation Error:\n{str(e)}\n\nPlease check your settings and try again."
         logger.error(f"Translation failed: {e}", exc_info=True)
         return None, error_msg
 
+
 def translate_document_sync(*args, **kwargs):
     """Synchronous wrapper with explicit event loop management"""
-    import asyncio
     import concurrent.futures
     from datetime import datetime
-    
-    print(f"\n{'='*60}")
+
+    print(f"\n{'=' * 60}")
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 translate_document_sync called")
-    
+
     # Define a helper to run the async function in a new thread's loop
     def run_in_new_loop(func, *args, **kwargs):
         """Create a fresh event loop in the new thread"""
@@ -198,54 +195,52 @@ def translate_document_sync(*args, **kwargs):
             return new_loop.run_until_complete(func(*args, **kwargs))
         finally:
             new_loop.close()
-    
+
     try:
         try:
             # Check if a loop is already running (Gradio/HF Spaces context)
             asyncio.get_running_loop()
-            print(f"[DEBUG] ⚠️  Event loop running - Offloading to ThreadPool")
-            
+            print("[DEBUG] ⚠️  Event loop running - Offloading to ThreadPool")
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 # Pass the FUNCTION and ARGS separately
-                future = executor.submit(
-                    run_in_new_loop, 
-                    translate_document_async, 
-                    *args, 
-                    **kwargs
-                )
+                future = executor.submit(run_in_new_loop, translate_document_async, *args, **kwargs)
                 result = future.result(timeout=600)
-                print(f"[DEBUG] ✓ Thread execution completed")
+                print("[DEBUG] ✓ Thread execution completed")
                 return result
-                
+
         except RuntimeError:
             # No loop running (Standalone context)
-            print(f"[DEBUG] ℹ️  No running loop - Using standard asyncio.run")
+            print("[DEBUG] ℹ️  No running loop - Using standard asyncio.run")
             result = asyncio.run(translate_document_async(*args, **kwargs))
-            print(f"[DEBUG] ✓ asyncio.run() completed")
+            print("[DEBUG] ✓ asyncio.run() completed")
             return result
-            
+
     except concurrent.futures.TimeoutError:
         error_msg = "❌ Translation timeout (>10 minutes)"
         print(f"[ERROR] {error_msg}")
         return None, error_msg
-        
+
     except Exception as e:
         print(f"[ERROR] Critical failure: {e}")
         import traceback
+
         traceback.print_exc()
         return None, f"❌ Error: {str(e)}"
-        
+
     finally:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🏁 Finished")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
+
 
 # ============================================================================
 # GRADIO INTERFACE
 # ============================================================================
 
+
 def create_interface():
     """Create the Gradio interface"""
-    
+
     # Language options (common pairs)
     languages = {
         "English": "en",
@@ -265,86 +260,88 @@ def create_interface():
         "Turkish": "tr",
         "Czech": "cs",
         "Ukrainian": "uk",
-        "Vietnamese": "vi"
+        "Vietnamese": "vi",
     }
-    
+
     with gr.Blocks(title="Document Translator") as demo:  # REMOVED theme parameter
-        gr.Markdown("""
+        gr.Markdown(
+            """
         # 🌍 Document Translator
-        
+
         Translate Word documents while preserving formatting, footnotes, and styling.
-        """)
-        
+        """
+        )
+
         with gr.Row():
             with gr.Column(scale=1):
                 gr.Markdown("### 📤 Input")
-                
+
                 input_file = gr.File(
                     label="Upload Document (.docx)",
                     file_types=[".docx"],
-                    type="filepath"
+                    type="filepath",
                 )
-                
+
                 with gr.Row():
                     source_lang = gr.Dropdown(
                         choices=list(languages.keys()),
                         value="English",
-                        label="Source Language"
+                        label="Source Language",
                     )
                     target_lang = gr.Dropdown(
                         choices=list(languages.keys()),
                         value="German",
-                        label="Target Language"
+                        label="Target Language",
                     )
-                
+
                 gr.Markdown("### ⚙️ Settings")
-                
+
                 mode = gr.Dropdown(
                     choices=[
                         "Hybrid (Recommended)",
                         "NMT Only",
                         "LLM with Alignment",
-                        "LLM without Alignment"
+                        "LLM without Alignment",
                     ],
                     value="Hybrid (Recommended)",
                     label="Translation Mode",
-                    info="Hybrid uses NMT with optional LLM enhancement"
+                    info="Hybrid uses NMT with optional LLM enhancement",
                 )
-                
+
                 nmt_backend = gr.Dropdown(
                     choices=["NLLB", "Madlad", "Opus", "CT2", "Auto"],
                     value="NLLB",
                     label="NMT Backend",
-                    info="NLLB: Fast & balanced | Madlad: Academic | Opus: Specialized pairs"
+                    info="NLLB: Fast & balanced | Madlad: Academic | Opus: Specialized pairs",
                 )
-                
+
                 nllb_size = gr.Dropdown(
                     choices=["600M", "1.3B", "3.3B"],
                     value="600M",
                     label="NLLB Model Size",
-                    info="600M recommended for Hugging Face Spaces (limited RAM)"
+                    info="600M recommended for Hugging Face Spaces (limited RAM)",
                 )
-                
+
                 aligner = gr.Dropdown(
                     choices=["Auto", "Awesome", "SimAlign", "Lindat", "Heuristic"],
                     value="Auto",
                     label="Word Aligner",
-                    info="Auto will select best available aligner"
+                    info="Auto will select best available aligner",
                 )
-                
+
                 with gr.Row():
                     llm_provider = gr.Dropdown(
                         choices=["None", "OpenAI", "Anthropic", "Ollama", "Groq"],
                         value="None",
                         label="LLM Provider (Optional)",
-                        info="Requires API key in environment variables"
+                        info="Requires API key in environment variables",
                     )
                     llm_model = gr.Dropdown(
                         choices=["default"],
                         value="default",
                         allow_custom_value=True,
                         label="LLM Model",
-                        info="Click fetch to update list"
+                        info="Click fetch to update list",
                     )
                     fetch_llm_btn = gr.Button("🔄", size="sm")
 
@@ -352,17 +349,18 @@ def create_interface():
                 async def _fetch_translator_models(provider):
                     if provider == "None":
                         return gr.update(choices=["default"], value="default")
-                    
+
                     try:
                         # We need an instance to call get_available_models
                         # Temporary translator instance
                         from translator import LLMTranslator
+
                         t = LLMTranslator("en", "de", preferred_provider=provider.lower())
-                        
+
                         models = await t.get_available_models(provider.lower())
                         if not models:
                             return gr.update(choices=["default"], value="default")
-                        
+
                         choices = [m["id"] for m in models]
                         return gr.update(choices=choices, value=choices[0])
                     except Exception as e:
@@ -372,83 +370,85 @@ def create_interface():
                 fetch_llm_btn.click(
                     fn=_fetch_translator_models,
                     inputs=[llm_provider],
-                    outputs=[llm_model]
+                    outputs=[llm_model],
                 )
 
                 def _on_provider_change(provider):
-                    if provider == "None": return "default"
+                    if provider == "None":
+                        return "default"
                     # Try to get from format_transplant defaults if possible
                     try:
                         from format_transplant import PROVIDER_DEFAULTS
+
                         return PROVIDER_DEFAULTS.get(provider.lower(), {}).get("model", "default")
-                    except:
+                    except Exception:
                         # Fallbacks for translator-app specifically
                         defaults = {
                             "OpenAI": "gpt-4o-mini",
                             "Anthropic": "claude-3-5-sonnet-20241022",
                             "Groq": "llama-3.3-70b-versatile",
-                            "Ollama": "ministral-3b-instruct-2512-q4_K_M"
+                            "Ollama": "ministral-3b-instruct-2512-q4_K_M",
                         }
                         return defaults.get(provider, "default")
 
-                llm_provider.change(
-                    fn=_on_provider_change,
-                    inputs=[llm_provider],
-                    outputs=[llm_model]
-                )
-                
+                llm_provider.change(fn=_on_provider_change, inputs=[llm_provider], outputs=[llm_model])
+
                 translate_btn = gr.Button("🚀 Translate Document", variant="primary", size="lg")
-            
+
             with gr.Column(scale=1):
                 gr.Markdown("### 📥 Output")
-                
-                output_file = gr.File(
-                    label="Translated Document",
-                    interactive=False
-                )
-                
-                log_output = gr.Textbox(
-                    label="Translation Log",
-                    lines=20,
-                    max_lines=30,
-                    interactive=False
-                )
-        
+
+                output_file = gr.File(label="Translated Document", interactive=False)
+
+                log_output = gr.Textbox(label="Translation Log", lines=20, max_lines=30, interactive=False)
+
         gr.Markdown(f"### System Status\n```\n{SETUP_STATUS}\n```")
-        
-        gr.Markdown("""
+
+        gr.Markdown(
+            """
         **Features:**
         - Multiple neural translation backends (NLLB, Madlad, Opus-MT, WMT21)
         - Word-level alignment for format preservation
         - Support for footnotes, tables, headers/footers
         - Optional LLM enhancement (OpenAI/Anthropic)
-        
+
         **Recommended Settings:**
         - Mode: Hybrid (best quality)
         - Backend: NLLB (fastest, good quality)
         - Size: 600M (good balance)
-                    
+
         ### 📖 Tips
-        
+
         - **For best quality**: Use "Hybrid" mode with NLLB backend
         - **For speed**: Use "NMT Only" with NLLB 600M
         - **For academic texts**: Try Madlad backend
         - **For specific language pairs**: Opus-MT (if available)
         - **LLM modes**: Require API keys set as environment variables
-        
+
         ### ⚠️ Limitations
-        
+
         - Only .docx format supported (not .doc)
         - Large documents may take several minutes
         - Complex formatting may require manual review
         - LLM modes are slower and require API access
-        """)
-        
-        def handle_translate(input_f, src_lang_name, tgt_lang_name, mode, nmt, nllb_sz, algn, llm_p, llm_m):
+        """
+        )
+
+        def handle_translate(
+            input_f,
+            src_lang_name,
+            tgt_lang_name,
+            mode,
+            nmt,
+            nllb_sz,
+            algn,
+            llm_p,
+            llm_m,
+        ):
             src_code = languages.get(src_lang_name, "en")
             tgt_code = languages.get(tgt_lang_name, "de")
             return translate_document_sync(input_f, src_code, tgt_code, mode, nmt, nllb_sz, algn, llm_p, llm_m)
-        
+
         translate_btn.click(
             fn=handle_translate,
             inputs=[
@@ -460,12 +460,13 @@ def create_interface():
                 nllb_size,
                 aligner,
                 llm_provider,
-                llm_model
+                llm_model,
             ],
-            outputs=[output_file, log_output]
+            outputs=[output_file, log_output],
         )
-    
+
     return demo
+
 
 # ============================================================================
 # MAIN
@@ -476,8 +477,11 @@ if __name__ == "__main__":
     # Respect the GRADIO_SERVER_PORT environment variable if set (standard for HF Spaces)
     server_port = int(os.getenv("GRADIO_SERVER_PORT", 7860))
     demo.launch(
-        server_name="0.0.0.0",
+        # Binding to 0.0.0.0 is intentional: this app runs inside HF Spaces /
+        # docker containers where the gradio server must be reachable from
+        # outside the container.
+        server_name="0.0.0.0",  # nosec B104
         server_port=server_port,
         share=False,
-        theme=gr.themes.Soft()  
+        theme=gr.themes.Soft(),
     )

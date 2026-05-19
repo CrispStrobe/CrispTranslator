@@ -42,7 +42,8 @@ print("-" * 44)
 
 def _check(name: str, stmt: str) -> bool:
     try:
-        exec(stmt, globals())
+        # `stmt` is a hard-coded import line from this file, not user input.
+        exec(stmt, globals())  # nosec B102
         print(f"  ✓ {name}")
         return True
     except ImportError as e:
@@ -60,11 +61,11 @@ HAS_DOCX = _check(
     "from docx.oxml.shared import OxmlElement; from docx.oxml.ns import qn; "
     "from docx.oxml import parse_xml",
 )
-HAS_LXML  = _check("lxml",       "from lxml import etree")
-HAS_OPENAI    = _check("openai",       "from openai import OpenAI")
-HAS_ANTHROPIC = _check("anthropic",    "import anthropic")
-HAS_POE       = _check("fastapi-poe",  "import fastapi_poe as fp")
-HAS_REQUESTS  = _check("requests",     "import requests")
+HAS_LXML = _check("lxml", "from lxml import etree")
+HAS_OPENAI = _check("openai", "from openai import OpenAI")
+HAS_ANTHROPIC = _check("anthropic", "import anthropic")
+HAS_POE = _check("fastapi-poe", "import fastapi_poe as fp")
+HAS_REQUESTS = _check("requests", "import requests")
 
 print("-" * 44)
 
@@ -78,7 +79,6 @@ from docx import Document  # noqa: E402
 from docx.oxml import parse_xml  # noqa: E402
 from docx.oxml.ns import qn  # noqa: E402
 from docx.oxml.shared import OxmlElement  # noqa: E402
-from docx.shared import Emu, Pt, RGBColor  # noqa: E402
 from docx.text.paragraph import Paragraph  # noqa: E402
 from lxml import etree  # noqa: E402
 import requests  # noqa: E402
@@ -93,6 +93,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("FormatTransplant")
+
 
 def load_dotenv(path: Optional[Path] = None):
     """Simple .env loader to avoid extra dependencies."""
@@ -112,6 +113,7 @@ def load_dotenv(path: Optional[Path] = None):
                     os.environ[key.strip()] = value
     except Exception as e:
         logger.warning(f"Failed to load .env: {e}")
+
 
 # Load environment early
 load_dotenv()
@@ -142,20 +144,45 @@ KEEP_RPR_TAGS: Set[str] = {
 # Multilingual heading style name patterns (lowercase), grouped by level.
 HEADING_PATTERNS: Dict[int, List[str]] = {
     1: [
-        "heading 1", "heading1", "h1",
-        "überschrift 1", "titre 1", "titolo 1", "encabezado 1",
-        "заголовок 1", "标题 1", "kop 1", "nagłówek 1", "rubrik 1",
+        "heading 1",
+        "heading1",
+        "h1",
+        "überschrift 1",
+        "titre 1",
+        "titolo 1",
+        "encabezado 1",
+        "заголовок 1",
+        "标题 1",
+        "kop 1",
+        "nagłówek 1",
+        "rubrik 1",
         "heading1char",
     ],
     2: [
-        "heading 2", "heading2", "h2",
-        "überschrift 2", "titre 2", "titolo 2", "encabezado 2",
-        "заголовок 2", "标题 2", "kop 2", "nagłówek 2",
+        "heading 2",
+        "heading2",
+        "h2",
+        "überschrift 2",
+        "titre 2",
+        "titolo 2",
+        "encabezado 2",
+        "заголовок 2",
+        "标题 2",
+        "kop 2",
+        "nagłówek 2",
     ],
     3: [
-        "heading 3", "heading3", "h3",
-        "überschrift 3", "titre 3", "titolo 3", "encabezado 3",
-        "заголовок 3", "标题 3", "kop 3", "nagłówek 3",
+        "heading 3",
+        "heading3",
+        "h3",
+        "überschrift 3",
+        "titre 3",
+        "titolo 3",
+        "encabezado 3",
+        "заголовок 3",
+        "标题 3",
+        "kop 3",
+        "nagłówek 3",
     ],
     4: ["heading 4", "heading4", "h4", "überschrift 4", "titre 4", "заголовок 4"],
     5: ["heading 5", "heading5", "h5", "überschrift 5", "titre 5"],
@@ -167,19 +194,40 @@ HEADING_PATTERNS: Dict[int, List[str]] = {
 
 TITLE_PATTERNS = ["title", "documenttitle", "thetitle", "doc title"]
 BODY_PATTERNS = [
-    "normal", "standard", "body text", "bodytext", "fließtext",
-    "texte de corps", "corpo del testo", "cuerpo de texto",
-    "основной текст", "no spacing", "default paragraph style", "tekst podstawowy",
+    "normal",
+    "standard",
+    "body text",
+    "bodytext",
+    "fließtext",
+    "texte de corps",
+    "corpo del testo",
+    "cuerpo de texto",
+    "основной текст",
+    "no spacing",
+    "default paragraph style",
+    "tekst podstawowy",
 ]
 FOOTNOTE_PATTERNS = [
-    "footnote text", "fußnotentext", "note de bas de page",
-    "nota a piè di pagina", "nota al pie", "сноска",
-    "footnote", "footnotetext",
+    "footnote text",
+    "fußnotentext",
+    "note de bas de page",
+    "nota a piè di pagina",
+    "nota al pie",
+    "сноска",
+    "footnote",
+    "footnotetext",
 ]
 CAPTION_PATTERNS = ["caption", "bildunterschrift", "légende", "didascalia", "leyenda"]
 BLOCKQUOTE_PATTERNS = [
-    "block text", "blockquote", "quote", "intense quote",
-    "block quotation", "zitat", "citation", "citazione", "bloque de texto",
+    "block text",
+    "blockquote",
+    "quote",
+    "intense quote",
+    "block quotation",
+    "zitat",
+    "citation",
+    "citazione",
+    "bloque de texto",
 ]
 ABSTRACT_PATTERNS = ["abstract", "zusammenfassung", "résumé", "riassunto"]
 
@@ -189,7 +237,7 @@ ABSTRACT_PATTERNS = ["abstract", "zusammenfassung", "résumé", "riassunto"]
 _HEADING_KW_RE = re.compile(
     r"(?:heading|ueberschrift|\u00fcberschrift|titre|titolo|encabezado"
     r"|\u0437\u0430\u0433\u043e\u043b\u043e\u0432\u043e\u043a"  # заголовок
-    r"|kop|rubrik|nag\u0142\u00f3wek"                           # nagłówek
+    r"|kop|rubrik|nag\u0142\u00f3wek"  # nagłówek
     r")[\s_\-]*0*([1-9])",
     re.IGNORECASE | re.UNICODE,
 )
@@ -220,8 +268,8 @@ class ParagraphData:
 
     runs: List[RunData] = field(default_factory=list)
     original_style_name: str = "Normal"
-    semantic_class: str = "body"   # body / heading1..9 / title / footnote / caption / blockquote / table
-    heading_level: int = 0         # 1-9 for headings, 0 otherwise
+    semantic_class: str = "body"  # body / heading1..9 / title / footnote / caption / blockquote / table
+    heading_level: int = 0  # 1-9 for headings, 0 otherwise
 
     # Direct paragraph formatting from source (informational; blueprint style overrides)
     alignment: Optional[Any] = None
@@ -232,7 +280,7 @@ class ParagraphData:
     space_after_pt: Optional[float] = None
     line_spacing: Optional[Any] = None
 
-    location: str = "body"         # body / table / footnote / header / footer
+    location: str = "body"  # body / table / footnote / header / footer
     footnote_id: Optional[str] = None
 
     # Raw lxml <w:p> element (for deep-copy strategy)
@@ -240,7 +288,7 @@ class ParagraphData:
 
     # Structural flags
     has_footnote_refs: bool = False
-    is_section_break: bool = False   # inline <w:sectPr> inside <w:pPr>
+    is_section_break: bool = False  # inline <w:sectPr> inside <w:pPr>
 
     def get_text(self) -> str:
         return "".join(r.text for r in self.runs)
@@ -252,7 +300,7 @@ class FootnoteData:
 
     footnote_id: str
     paragraphs: List[ParagraphData] = field(default_factory=list)
-    raw_xml: Optional[Any] = None   # The <w:footnote> element
+    raw_xml: Optional[Any] = None  # The <w:footnote> element
 
 
 @dataclass
@@ -261,7 +309,7 @@ class BlueprintStyleInfo:
 
     name: str
     style_id: str
-    type_val: int   # 1=paragraph, 2=character, 3=table, 4=numbering
+    type_val: int  # 1=paragraph, 2=character, 3=table, 4=numbering
     base_style_name: Optional[str] = None
     resolved_font: Optional[str] = None
     resolved_size_pt: Optional[float] = None
@@ -279,8 +327,8 @@ class BlueprintSchema:
     """Full formatting schema extracted from the blueprint document."""
 
     sections: List[Dict[str, Any]] = field(default_factory=list)
-    styles: Dict[str, BlueprintStyleInfo] = field(default_factory=dict)       # name → info
-    style_id_map: Dict[str, BlueprintStyleInfo] = field(default_factory=dict) # id → info
+    styles: Dict[str, BlueprintStyleInfo] = field(default_factory=dict)  # name → info
+    style_id_map: Dict[str, BlueprintStyleInfo] = field(default_factory=dict)  # id → info
     default_font: str = "Times New Roman"
     default_font_size_pt: float = 12.0
     # Style names that actually appear in the blueprint body (for diagnostics)
@@ -300,16 +348,17 @@ class BlueprintSchema:
 # LLM CONFIGURATION
 # ============================================================================
 
+
 class LLMProvider(Enum):
-    OPENAI     = "openai"
-    ANTHROPIC  = "anthropic"
-    GROQ       = "groq"
-    NEBIUS     = "nebius"
-    SCALEWAY   = "scaleway"
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    GROQ = "groq"
+    NEBIUS = "nebius"
+    SCALEWAY = "scaleway"
     OPENROUTER = "openrouter"
-    MISTRAL    = "mistral"
-    POE        = "poe"
-    OLLAMA     = "ollama"
+    MISTRAL = "mistral"
+    POE = "poe"
+    OLLAMA = "ollama"
 
 
 # Per-provider defaults — base_url=None means the provider uses its own SDK
@@ -319,64 +368,102 @@ PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "base_url": "https://api.openai.com/v1",
         "env": "OPENAI_API_KEY",
         "model": "gpt-4o",
-        "fallbacks": ["gpt-4o-2024-08-06", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-        "batch_size": 15
+        "fallbacks": [
+            "gpt-4o-2024-08-06",
+            "gpt-4o-mini",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo",
+        ],
+        "batch_size": 15,
     },
     "anthropic": {
         "base_url": None,
         "env": "ANTHROPIC_API_KEY",
         "model": "claude-3-7-sonnet-20250219",
-        "fallbacks": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-2.1"],
-        "batch_size": 15
+        "fallbacks": [
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229",
+            "claude-2.1",
+        ],
+        "batch_size": 15,
     },
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
         "env": "GROQ_API_KEY",
         "model": "llama-3.3-70b-versatile",
-        "fallbacks": ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
-        "batch_size": 5
+        "fallbacks": [
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
+        ],
+        "batch_size": 5,
     },
     "nebius": {
         "base_url": "https://api.studio.nebius.ai/v1",
         "env": "NEBIUS_API_KEY",
         "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
-        "fallbacks": ["meta-llama/Meta-Llama-3.1-8B-Instruct", "meta-llama/Llama-Guard-3-8B"],
-        "batch_size": 15
+        "fallbacks": [
+            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            "meta-llama/Llama-Guard-3-8B",
+        ],
+        "batch_size": 15,
     },
     "scaleway": {
         "base_url": "https://api.scaleway.ai/v1",
-        "env": "SCALEWAY_API_KEY", # Updated to match .env
+        "env": "SCALEWAY_API_KEY",  # Updated to match .env
         "model": "llama-3.3-70b-instruct",
-        "fallbacks": ["deepseek-r1-distill-llama-70b", "llama-3.1-8b-instruct", "mistral-nemo-instruct-2407", "pixtral-12b-2409"],
-        "batch_size": 15
+        "fallbacks": [
+            "deepseek-r1-distill-llama-70b",
+            "llama-3.1-8b-instruct",
+            "mistral-nemo-instruct-2407",
+            "pixtral-12b-2409",
+        ],
+        "batch_size": 15,
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "env": "OPENROUTER_API_KEY",
         "model": "meta-llama/llama-3.3-70b-instruct",
-        "fallbacks": ["anthropic/claude-3.5-sonnet", "google/gemini-pro-1.5", "mistralai/mistral-large", "qwen/qwen-2.5-72b-instruct"],
-        "batch_size": 15
+        "fallbacks": [
+            "anthropic/claude-3.5-sonnet",
+            "google/gemini-pro-1.5",
+            "mistralai/mistral-large",
+            "qwen/qwen-2.5-72b-instruct",
+        ],
+        "batch_size": 15,
     },
     "mistral": {
         "base_url": "https://api.mistral.ai/v1",
         "env": "MISTRAL_API_KEY",
         "model": "mistral-large-latest",
-        "fallbacks": ["mistral-medium-latest", "mistral-small-latest", "codestral-latest", "open-mistral-nemo"],
-        "batch_size": 15
+        "fallbacks": [
+            "mistral-medium-latest",
+            "mistral-small-latest",
+            "codestral-latest",
+            "open-mistral-nemo",
+        ],
+        "batch_size": 15,
     },
     "poe": {
         "base_url": None,
         "env": "POE_API_KEY",
         "model": "Claude-3.7-Sonnet",
         "fallbacks": ["Claude-3.5-Sonnet", "GPT-4o", "Claude-3-Opus", "Llama-3.1-405B"],
-        "batch_size": 15
+        "batch_size": 15,
     },
     "ollama": {
         "base_url": "http://localhost:11434/api",
         "env": "OLLAMA_API_KEY",
         "model": "ollama.com/library/ministral-3:3b-instruct-2512-q4_K_M",
-        "fallbacks": ["cas/llama-3.2-3b-instruct:latest", "llama3.2:latest", "mistral:latest", "phi3:latest"],
-        "batch_size": 15
+        "fallbacks": [
+            "cas/llama-3.2-3b-instruct:latest",
+            "llama3.2:latest",
+            "mistral:latest",
+            "phi3:latest",
+        ],
+        "batch_size": 15,
     },
 }
 
@@ -384,12 +471,13 @@ PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
 @dataclass
 class LLMConfig:
     """Runtime configuration for an LLM provider."""
+
     provider: LLMProvider
     model: str
     api_key: str
-    base_url: Optional[str] = None     # overrides PROVIDER_DEFAULTS if set
+    base_url: Optional[str] = None  # overrides PROVIDER_DEFAULTS if set
     max_tokens: int = 4096
-    temperature: float = 0.1           # low for deterministic formatting
+    temperature: float = 0.1  # low for deterministic formatting
     # How many chars of blueprint text to send for styleguide generation (~10 K tokens)
     blueprint_context_chars: int = 100_000
     # Source paragraphs per LLM batch
@@ -407,23 +495,21 @@ def llm_config_from_args(
 ) -> LLMConfig:
     """Build an LLMConfig from CLI/UI inputs, filling defaults from PROVIDER_DEFAULTS."""
     import os
+
     defaults = PROVIDER_DEFAULTS.get(provider_str, {})
-    
+
     # Resolve key: from args, then env, then fallback to empty for Ollama
     env_var = defaults.get("env", "")
     resolved_key = api_key or os.getenv(env_var, "")
-    
+
     if not resolved_key and provider_str != "ollama":
-        raise ValueError(
-            f"No API key for provider '{provider_str}'. "
-            f"Set env var {env_var or '?'} or pass --llm-key."
-        )
-    
+        raise ValueError(f"No API key for provider '{provider_str}'. Set env var {env_var or '?'} or pass --llm-key.")
+
     # Handle 'auto' or 'default' markers from UI/CLI
     resolved_model = model
     if resolved_model and resolved_model.lower() in ("auto", "default"):
         resolved_model = None
-        
+
     return LLMConfig(
         provider=LLMProvider(provider_str),
         model=resolved_model or defaults.get("model", ""),
@@ -438,7 +524,7 @@ def llm_config_from_args(
 # UTILITY HELPERS
 # ============================================================================
 
-_W_NS  = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml"
 _W_NS_MAP = {"w": _W_NS}
 
@@ -577,8 +663,7 @@ class BlueprintAnalyzer:
         self._body_inventory(doc, schema)
         self._footnote_format(doc, schema)
         logger.info(
-            "[BLUEPRINT] Done: %d section(s), %d style(s), "
-            "%d unique body-para styles",
+            "[BLUEPRINT] Done: %d section(s), %d style(s), %d unique body-para styles",
             len(schema.sections),
             len(schema.styles),
             len(schema.body_para_style_names),
@@ -590,22 +675,23 @@ class BlueprintAnalyzer:
         logger.debug("[BLUEPRINT] ── Sections ──")
         for i, sect in enumerate(doc.sections):
             try:
+
                 def _pt(v):
                     return round(v.pt, 2) if v is not None else None
 
                 data = {
                     "index": i,
-                    "page_width_pt":      _pt(sect.page_width),
-                    "page_height_pt":     _pt(sect.page_height),
-                    "left_margin_pt":     _pt(sect.left_margin),
-                    "right_margin_pt":    _pt(sect.right_margin),
-                    "top_margin_pt":      _pt(sect.top_margin),
-                    "bottom_margin_pt":   _pt(sect.bottom_margin),
-                    "gutter_pt":          _pt(sect.gutter),
+                    "page_width_pt": _pt(sect.page_width),
+                    "page_height_pt": _pt(sect.page_height),
+                    "left_margin_pt": _pt(sect.left_margin),
+                    "right_margin_pt": _pt(sect.right_margin),
+                    "top_margin_pt": _pt(sect.top_margin),
+                    "bottom_margin_pt": _pt(sect.bottom_margin),
+                    "gutter_pt": _pt(sect.gutter),
                     "header_distance_pt": _pt(sect.header_distance),
                     "footer_distance_pt": _pt(sect.footer_distance),
-                    "orientation":        str(sect.orientation),
-                    "diff_first_page":    sect.different_first_page_header_footer,
+                    "orientation": str(sect.orientation),
+                    "diff_first_page": sect.different_first_page_header_footer,
                 }
                 schema.sections.append(data)
                 logger.debug(
@@ -629,7 +715,7 @@ class BlueprintAnalyzer:
     # ------------------------------------------------------------------
     def _styles(self, doc: Document, schema: BlueprintSchema) -> None:
         logger.debug("[BLUEPRINT] ── Styles ──")
-        _fn_ref_style_found = False   # track whether we've already locked in the style
+        _fn_ref_style_found = False  # track whether we've already locked in the style
         for style in doc.styles:
             try:
                 # Skip numbering styles — they have no font/base_style attributes
@@ -664,20 +750,24 @@ class BlueprintAnalyzer:
 
                 # Detect blueprint's footnote-reference character style (first match wins)
                 if type_val == 2 and not _fn_ref_style_found:
-                    nm_key = (
-                        style.name.lower()
-                        .replace(" ", "").replace("-", "").replace("_", "")
-                    )
-                    if any(kw in nm_key for kw in (
-                        "footnotereference", "funotenzeichen",
-                        "fußnotenzeichen", "fu\u00dfnotenzeichen",
-                        "noteref", "notefnref",
-                    )):
+                    nm_key = style.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    if any(
+                        kw in nm_key
+                        for kw in (
+                            "footnotereference",
+                            "funotenzeichen",
+                            "fußnotenzeichen",
+                            "fu\u00dfnotenzeichen",
+                            "noteref",
+                            "notefnref",
+                        )
+                    ):
                         schema.footnote_ref_char_style_id = style.style_id
                         _fn_ref_style_found = True
                         logger.debug(
                             "[BLUEPRINT] Footnote reference char style: '%s' → id='%s'",
-                            style.name, style.style_id,
+                            style.name,
+                            style.style_id,
                         )
 
                 if type_val == 1 and hasattr(style, "paragraph_format"):
@@ -694,8 +784,7 @@ class BlueprintAnalyzer:
 
                 if type_val == 1:
                     logger.debug(
-                        "[BLUEPRINT] ParaStyle %-32s  id=%-20s  font=%-18s  "
-                        "%.0fpt  bold=%-5s  italic=%-5s  base=%s",
+                        "[BLUEPRINT] ParaStyle %-32s  id=%-20s  font=%-18s  %.0fpt  bold=%-5s  italic=%-5s  base=%s",
                         f"'{style.name}'",
                         f"'{style.style_id}'",
                         f"'{info.resolved_font}'",
@@ -786,9 +875,7 @@ class BlueprintAnalyzer:
                     fn_part = rel.target_part
                     break
             if fn_part is None:
-                logger.debug(
-                    "[BLUEPRINT] No footnotes part – footnote format detection skipped"
-                )
+                logger.debug("[BLUEPRINT] No footnotes part – footnote format detection skipped")
                 return
 
             root = parse_xml(fn_part.blob)
@@ -826,8 +913,7 @@ class BlueprintAnalyzer:
                             schema.footnote_marker_rPr_xml = copy.deepcopy(rPr)
                             rPr_found = True
                             logger.debug(
-                                "[BLUEPRINT] Footnote marker rPr captured "
-                                "(fn id=%d): %s",
+                                "[BLUEPRINT] Footnote marker rPr captured (fn id=%d): %s",
                                 fn_id,
                                 [c.tag.split("}")[-1] for c in rPr],
                             )
@@ -848,7 +934,7 @@ class BlueprintAnalyzer:
                             has_tab = next_r.find(qn("w:tab")) is not None
                             t_elems = next_r.findall(qn("w:t"))
                             sep_text = "".join(t.text or "" for t in t_elems)
-                            
+
                             if has_tab:
                                 # Prioritize physical tab element over text
                                 schema.footnote_separator = "\t"
@@ -864,7 +950,8 @@ class BlueprintAnalyzer:
                                 label = repr(sep_text) if sep_text else "(empty)"
                                 logger.debug(
                                     "[BLUEPRINT] Footnote separator: %s (fn id=%d)",
-                                    label, fn_id,
+                                    label,
+                                    fn_id,
                                 )
                             else:
                                 # Next run is actual footnote text — no separator
@@ -896,15 +983,11 @@ class BlueprintAnalyzer:
                 logger.info(
                     "[BLUEPRINT] Footnote format: marker_rPr=%s  separator=%s",
                     "captured" if rPr_found else "none",
-                    repr(schema.footnote_separator)
-                    if schema.footnote_separator is not None
-                    else "not found",
+                    (repr(schema.footnote_separator) if schema.footnote_separator is not None else "not found"),
                 )
 
         except Exception as exc:
-            logger.warning(
-                "[BLUEPRINT] Footnote format detection error: %s", exc, exc_info=True
-            )
+            logger.warning("[BLUEPRINT] Footnote format detection error: %s", exc, exc_info=True)
 
 
 # ============================================================================
@@ -925,9 +1008,7 @@ class ContentExtractor:
         self.src_style_id_to_name: Dict[str, str] = {}
 
     # ------------------------------------------------------------------
-    def extract(
-        self, doc: Document
-    ) -> Tuple[List[ParagraphData], List[FootnoteData]]:
+    def extract(self, doc: Document) -> Tuple[List[ParagraphData], List[FootnoteData]]:
         """
         Returns:
             body_elements  – ordered list of ParagraphData (paragraphs AND
@@ -943,9 +1024,7 @@ class ContentExtractor:
                 self.src_style_id_to_name[s.style_id] = s.name
             except Exception:
                 pass
-        logger.debug(
-            "[EXTRACT] Source document has %d styles", len(self.src_style_id_to_name)
-        )
+        logger.debug("[EXTRACT] Source document has %d styles", len(self.src_style_id_to_name))
 
         body_elements = self._body(doc)
         footnotes = self._footnotes(doc)
@@ -996,9 +1075,7 @@ class ContentExtractor:
             pf = para.paragraph_format
             pd.left_indent_pt = pf.left_indent.pt if pf.left_indent else None
             pd.right_indent_pt = pf.right_indent.pt if pf.right_indent else None
-            pd.first_line_indent_pt = (
-                pf.first_line_indent.pt if pf.first_line_indent else None
-            )
+            pd.first_line_indent_pt = pf.first_line_indent.pt if pf.first_line_indent else None
             pd.space_before_pt = pf.space_before.pt if pf.space_before else None
             pd.space_after_pt = pf.space_after.pt if pf.space_after else None
             pd.line_spacing = pf.line_spacing
@@ -1015,8 +1092,7 @@ class ContentExtractor:
         pd.is_section_break = _has_inline_sect_pr(para._element)
 
         logger.debug(
-            "[EXTRACT] Para | style='%s'  class=%s  loc=%s | "
-            "runs=%d  fnRef=%s  sectBrk=%s | text='%.60s'",
+            "[EXTRACT] Para | style='%s'  class=%s  loc=%s | runs=%d  fnRef=%s  sectBrk=%s | text='%.60s'",
             pd.original_style_name,
             pd.semantic_class,
             location,
@@ -1051,9 +1127,7 @@ class ContentExtractor:
                 elements.append(placeholder)
                 logger.debug("[EXTRACT] Table placeholder recorded")
             elif tag == qn("w:sectPr"):
-                logger.debug(
-                    "[EXTRACT] Body <w:sectPr> found (document-level) – blueprint's will be used"
-                )
+                logger.debug("[EXTRACT] Body <w:sectPr> found (document-level) – blueprint's will be used")
 
         self._infer_headings(elements)
         return elements
@@ -1078,7 +1152,7 @@ class ContentExtractor:
         """
         from collections import Counter
 
-        candidates: List[Tuple[ParagraphData, float]] = []   # (pd, size_pt)
+        candidates: List[Tuple[ParagraphData, float]] = []  # (pd, size_pt)
         body_sizes: List[float] = []
 
         for pd in elements:
@@ -1090,7 +1164,7 @@ class ContentExtractor:
                 continue
 
             # ── Paragraph-default bold and font size (from pPr/rPr) ──────────
-            ppr_bold   = False
+            ppr_bold = False
             ppr_sz_pt: Optional[float] = None
             if p_elem is not None:
                 pPr = p_elem.find(qn("w:pPr"))
@@ -1108,8 +1182,7 @@ class ContentExtractor:
             # ── Run-level bold and font size ──────────────────────────────────
             text_runs = [rd for rd in pd.runs if rd.text.strip()]
             all_runs_bold = bool(text_runs) and all(
-                rd.bold is True or (rd.bold is None and ppr_bold)
-                for rd in text_runs
+                rd.bold is True or (rd.bold is None and ppr_bold) for rd in text_runs
             )
             effective_bold = all_runs_bold or ppr_bold
 
@@ -1133,7 +1206,7 @@ class ContentExtractor:
         # Drop sizes that are ≤ body size (same-size bold = not really a heading)
         heading_szs = [sz for sz in unique_szs if body_sz == 0.0 or sz > body_sz + 0.4]
         if not heading_szs:
-            heading_szs = [0.0]   # sentinel: all candidates → level 1
+            heading_szs = [0.0]  # sentinel: all candidates → level 1
 
         def _level(sz: float) -> int:
             if heading_szs == [0.0]:
@@ -1149,16 +1222,17 @@ class ContentExtractor:
             pd.heading_level = lvl
             logger.debug(
                 "[EXTRACT] Inferred heading%d (sz=%.1fpt) | '%.60s'",
-                lvl, sz, pd.get_text(),
+                lvl,
+                sz,
+                pd.get_text(),
             )
 
-        size_labels = (
-            {i + 1: f"{sz:.1f}pt" for i, sz in enumerate(heading_szs)}
-            if heading_szs != [0.0] else {1: "any"}
-        )
+        size_labels = {i + 1: f"{sz:.1f}pt" for i, sz in enumerate(heading_szs)} if heading_szs != [0.0] else {1: "any"}
         logger.info(
             "[EXTRACT] Heading inference: %d candidate(s) across %d level(s): %s",
-            len(candidates), len(heading_szs), size_labels,
+            len(candidates),
+            len(heading_szs),
+            size_labels,
         )
 
     # ------------------------------------------------------------------
@@ -1250,15 +1324,13 @@ class StyleMapper:
         for name, info in self.schema.styles.items():
             if info.type_val != 1 or info.outline_level is None:
                 continue
-            level = info.outline_level + 1   # OOXML is 0-based; TOCHeading uses 9
+            level = info.outline_level + 1  # OOXML is 0-based; TOCHeading uses 9
             if level < 1 or level > 9:
                 continue
             used_first = name in self.schema.body_para_style_names
             if level not in self._bp_headings or used_first:
                 self._bp_headings[level] = name
-                logger.debug(
-                    "[MAPPER] Blueprint heading%d from outlineLvl: '%s'", level, name
-                )
+                logger.debug("[MAPPER] Blueprint heading%d from outlineLvl: '%s'", level, name)
 
         # Pass 2 — semantic name classification (fills gaps & non-heading classes)
         for name, info in self.schema.styles.items():
@@ -1290,9 +1362,7 @@ class StyleMapper:
             if "Normal" in self.schema.styles:
                 self._bp_body = "Normal"
             else:
-                para_styles = [
-                    n for n, i in self.schema.styles.items() if i.type_val == 1
-                ]
+                para_styles = [n for n, i in self.schema.styles.items() if i.type_val == 1]
                 self._bp_body = para_styles[0] if para_styles else "Normal"
 
     def _log_lookup(self) -> None:
@@ -1347,7 +1417,8 @@ class StyleMapper:
                 if adj in self._bp_headings:
                     logger.debug(
                         "[MAPPER] Heading %d not in blueprint, using adjacent level %d",
-                        heading_level, adj,
+                        heading_level,
+                        adj,
                     )
                     return self._bp_headings[adj]
             if self._bp_headings:
@@ -1361,9 +1432,7 @@ class StyleMapper:
         src_lo = src_name.lower()
         for bp_name in bp:
             if bp_name.lower() == src_lo:
-                logger.debug(
-                    "[MAPPER] Case-insensitive match: '%s' → '%s'", src_name, bp_name
-                )
+                logger.debug("[MAPPER] Case-insensitive match: '%s' → '%s'", src_name, bp_name)
                 return bp_name
 
         # 4. Semantic class match (non-heading classes; headings already handled above)
@@ -1446,7 +1515,7 @@ class DocumentBuilder:
         self.src_style_id_to_name: Dict[str, str] = {}
         # Optional LLM-formatted text maps: id(ParagraphData) → markdown string
         self.llm_para_map: Dict[int, str] = {}
-        self.llm_fn_map:   Dict[int, str] = {}
+        self.llm_fn_map: Dict[int, str] = {}
 
     # ------------------------------------------------------------------
     def build(
@@ -1507,9 +1576,7 @@ class DocumentBuilder:
                 )
             except Exception:
                 pass
-        style_names = sorted(
-            {p.style.name for p in doc.paragraphs if p.style}
-        )
+        style_names = sorted({p.style.name for p in doc.paragraphs if p.style})
         logger.debug("[BUILD]   Body para styles present: %s", style_names)
 
     # ------------------------------------------------------------------
@@ -1542,9 +1609,7 @@ class DocumentBuilder:
 
         # Insertion point: just before the final <w:sectPr>
         children = list(body)
-        final_sect_pr = next(
-            (c for c in reversed(children) if c.tag == qn("w:sectPr")), None
-        )
+        final_sect_pr = next((c for c in reversed(children) if c.tag == qn("w:sectPr")), None)
         insert_at = children.index(final_sect_pr) if final_sect_pr is not None else len(children)
 
         inserted = 0
@@ -1565,7 +1630,9 @@ class DocumentBuilder:
                         body.insert(insert_at + inserted, p_elem)
                         inserted += 1
                         target_style = self.mapper.map(
-                            elem.original_style_name, elem.semantic_class, elem.heading_level
+                            elem.original_style_name,
+                            elem.semantic_class,
+                            elem.heading_level,
                         )
                         logger.debug(
                             "[BUILD] [%d] Para | '%s' → '%s' | '%.55s'",
@@ -1580,9 +1647,7 @@ class DocumentBuilder:
                 logger.error("[BUILD] Element %d failed: %s", idx, exc, exc_info=True)
                 skipped += 1
 
-        logger.info(
-            "[BUILD] Inserted %d element(s), skipped %d", inserted, skipped
-        )
+        logger.info("[BUILD] Inserted %d element(s), skipped %d", inserted, skipped)
 
     # ------------------------------------------------------------------
     def _build_para(self, pd: ParagraphData, doc: Document) -> Optional[Any]:
@@ -1596,7 +1661,8 @@ class DocumentBuilder:
         if llm_text:
             logger.debug(
                 "[BUILD] LLM para | '%s' → '%.55s'",
-                pd.original_style_name, llm_text,
+                pd.original_style_name,
+                llm_text,
             )
             return self._build_para_from_llm_text(pd, doc, llm_text)
 
@@ -1613,8 +1679,7 @@ class DocumentBuilder:
 
         if pd.is_section_break:
             logger.warning(
-                "[BUILD] Source para has inline sectPr ('%s') – stripping it "
-                "(blueprint page layout preserved)",
+                "[BUILD] Source para has inline sectPr ('%s') – stripping it (blueprint page layout preserved)",
                 pd.original_style_name,
             )
 
@@ -1623,26 +1688,27 @@ class DocumentBuilder:
 
         logger.debug(
             "[BUILD] Built para: '%s' → '%s' (id='%s') | fn_refs=%s",
-            pd.original_style_name, target_name, target_id, pd.has_footnote_refs,
+            pd.original_style_name,
+            target_name,
+            target_id,
+            pd.has_footnote_refs,
         )
         return p_elem
 
     # ------------------------------------------------------------------
-    def _build_para_from_llm_text(
-        self, pd: "ParagraphData", doc: Document, md_text: str
-    ) -> Any:
+    def _build_para_from_llm_text(self, pd: "ParagraphData", doc: Document, md_text: str) -> Any:
         """
         Build a brand-new <w:p> element from LLM-formatted markdown text.
         The blueprint style is applied via <w:pPr>. Footnote-reference runs
         from the original source XML are re-attached at the end.
         """
         target_name = self.mapper.map(pd.original_style_name, pd.semantic_class, pd.heading_level)
-        target_id   = self._style_id(target_name, doc)
+        target_id = self._style_id(target_name, doc)
 
         p_elem = OxmlElement("w:p")
 
         # Paragraph properties: only the style reference
-        pPr    = OxmlElement("w:pPr")
+        pPr = OxmlElement("w:pPr")
         pStyle = OxmlElement("w:pStyle")
         pStyle.set(qn("w:val"), target_id)
         pPr.append(pStyle)
@@ -1734,11 +1800,7 @@ class DocumentBuilder:
             try:
                 # Get the source style ID from pPr/pStyle
                 pStyle_elems = _xpath(p_elem, "./w:pPr/w:pStyle")
-                src_id = (
-                    pStyle_elems[0].get(_w("val"), "Normal")
-                    if pStyle_elems
-                    else "Normal"
-                )
+                src_id = pStyle_elems[0].get(_w("val"), "Normal") if pStyle_elems else "Normal"
                 # Resolve source style name from our ID map
                 src_name = self.src_style_id_to_name.get(src_id, src_id)
                 sem, hl = classify_style(src_name)
@@ -1777,15 +1839,11 @@ class DocumentBuilder:
             except Exception:
                 pass
 
-        logger.warning(
-            "[BUILD] Style '%s' not found in document – using 'Normal'", style_name
-        )
+        logger.warning("[BUILD] Style '%s' not found in document – using 'Normal'", style_name)
         return "Normal"
 
     # ------------------------------------------------------------------
-    def _transplant_footnotes(
-        self, doc: Document, footnotes: List[FootnoteData]
-    ) -> None:
+    def _transplant_footnotes(self, doc: Document, footnotes: List[FootnoteData]) -> None:
         """
         Replace the blueprint copy's footnote content with the source's
         footnotes, applying the blueprint's footnote text style.
@@ -1799,10 +1857,7 @@ class DocumentBuilder:
                     break
 
             if fn_part is None:
-                logger.warning(
-                    "[BUILD] Blueprint copy has no footnotes part "
-                    "– footnotes cannot be transplanted"
-                )
+                logger.warning("[BUILD] Blueprint copy has no footnotes part – footnotes cannot be transplanted")
                 return
 
             fn_root = parse_xml(fn_part.blob)
@@ -1827,11 +1882,7 @@ class DocumentBuilder:
                 for para_idx, p_elem in enumerate(p_elems):
                     # ── Determine blueprint style ──────────────────────
                     pStyle_elems = _xpath(p_elem, "./w:pPr/w:pStyle")
-                    src_id = (
-                        pStyle_elems[0].get(_w("val"), "FootnoteText")
-                        if pStyle_elems
-                        else "FootnoteText"
-                    )
+                    src_id = pStyle_elems[0].get(_w("val"), "FootnoteText") if pStyle_elems else "FootnoteText"
                     src_name = self.src_style_id_to_name.get(src_id, src_id)
                     sem, _ = classify_style(src_name)
 
@@ -1854,7 +1905,7 @@ class DocumentBuilder:
                         for r in list(p_elem.findall(qn("w:r"))):
                             if r not in marker_runs:
                                 p_elem.remove(r)
-                        
+
                         # Apply blueprint marker formatting to the preserved marker runs
                         for r_marker in marker_runs:
                             self._apply_fn_ref_style(r_marker)
@@ -1878,7 +1929,9 @@ class DocumentBuilder:
                             p_elem.append(r_elem)
                         logger.debug(
                             "[BUILD] LLM footnote id=%s para %d: '%.50s'",
-                            fd.footnote_id, para_idx, llm_text,
+                            fd.footnote_id,
+                            para_idx,
+                            llm_text,
                         )
                     else:
                         # ── Original run-clean path ────────────────────────
@@ -1908,9 +1961,7 @@ class DocumentBuilder:
             # Commit updated XML
             updated = etree.tostring(fn_root, encoding="utf-8", xml_declaration=True)
             fn_part._blob = updated
-            logger.info(
-                "[BUILD] ✓ Footnote XML committed (%d footnote(s))", len(footnotes)
-            )
+            logger.info("[BUILD] ✓ Footnote XML committed (%d footnote(s))", len(footnotes))
 
         except Exception as exc:
             logger.error("[BUILD] Footnote transplant failed: %s", exc, exc_info=True)
@@ -1998,7 +2049,7 @@ class DocumentBuilder:
                 has_tab = next_r.find(qn("w:tab")) is not None
                 t_elems = next_r.findall(qn("w:t"))
                 current_text = "".join(t.text or "" for t in t_elems)
-                
+
                 # A run is a separator run if it has a tab OR is purely whitespace text
                 is_sep_run = has_tab or current_text.strip() == ""
 
@@ -2018,7 +2069,7 @@ class DocumentBuilder:
                         for child in list(next_r):
                             if child.tag in (qn("w:t"), qn("w:tab")):
                                 next_r.remove(child)
-                        
+
                         if wanted == "\t":
                             next_r.append(OxmlElement("w:tab"))
                         else:
@@ -2028,9 +2079,9 @@ class DocumentBuilder:
                                 t_elem.set(_XML_SPACE_ATTR, "preserve")
                             next_r.append(t_elem)
                         logger.debug(
-                            "[BUILD] Footnote separator: %r → %r", 
-                            ("<w:tab/>" if has_tab else current_text), 
-                            wanted
+                            "[BUILD] Footnote separator: %r → %r",
+                            ("<w:tab/>" if has_tab else current_text),
+                            wanted,
                         )
                     # else: matches — no-op
                 else:
@@ -2039,7 +2090,8 @@ class DocumentBuilder:
                         # Blueprint uses a separator — insert a new run before the text
                         next_r.addprevious(_make_sep_run(wanted))
                         logger.debug(
-                            "[BUILD] Footnote separator inserted before text: %r", wanted
+                            "[BUILD] Footnote separator inserted before text: %r",
+                            wanted,
                         )
                     # else: blueprint has no separator either — nothing to do
             elif wanted:
@@ -2074,15 +2126,15 @@ class MultiProviderLLMClient:
         """Send a chat completion and return the assistant's text."""
         # Candidate models list: primary model followed by fallbacks
         models_to_try = [config.model] + config.fallback_models
-        
+
         last_exception = None
-        
+
         for model_id in models_to_try:
             current_config = copy.copy(config)
             current_config.model = model_id
-            
+
             logger.info("[LLM] %s: Trying model '%s'...", config.provider.value, model_id)
-            
+
             for attempt in range(1, config.max_retries + 1):
                 try:
                     if config.provider == LLMProvider.ANTHROPIC:
@@ -2098,44 +2150,58 @@ class MultiProviderLLMClient:
                     exc_str = str(exc).lower()
                     is_rate_limit = "429" in exc_str or "rate limit" in exc_str
                     is_model_not_found = "404" in exc_str or "not found" in exc_str or "does not exist" in exc_str
-                    
+
                     if is_model_not_found:
-                        logger.warning("[LLM] %s: Model '%s' not found. Trying next fallback...", 
-                                       config.provider.value, model_id)
-                        break # Exit attempt loop, try next model
-                    
+                        logger.warning(
+                            "[LLM] %s: Model '%s' not found. Trying next fallback...",
+                            config.provider.value,
+                            model_id,
+                        )
+                        break  # Exit attempt loop, try next model
+
                     # Exponential backoff: retry_delay * (2 ^ (attempt-1))
                     delay = config.retry_delay_s * (2 ** (attempt - 1))
                     header_delay = None
-                    
+
                     # OpenAI / Groq / OpenRouter often put it in headers
                     if hasattr(exc, "response") and hasattr(exc.response, "headers"):
                         retry_after = exc.response.headers.get("retry-after")
                         if retry_after and retry_after.isdigit():
                             header_delay = float(retry_after)
-                    
+
                     if header_delay:
-                        delay = max(delay, header_delay + 1.0) # Add 1s buffer
+                        delay = max(delay, header_delay + 1.0)  # Add 1s buffer
                     elif is_rate_limit:
-                        delay *= 2 # Extra patience for rate limits
-                    
+                        delay *= 2  # Extra patience for rate limits
+
                     if is_rate_limit:
                         logger.warning(
                             "[LLM] %s rate limited (429) for model '%s'. Waiting %.1f seconds... (Attempt %d/%d)",
-                            config.provider.value, model_id, delay, attempt, config.max_retries
+                            config.provider.value,
+                            model_id,
+                            delay,
+                            attempt,
+                            config.max_retries,
                         )
                     else:
                         logger.warning(
                             "[LLM] %s model '%s' attempt %d/%d failed: %s",
-                            config.provider.value, model_id, attempt, config.max_retries, exc,
+                            config.provider.value,
+                            model_id,
+                            attempt,
+                            config.max_retries,
+                            exc,
                         )
-                    
+
                     if attempt < config.max_retries:
                         time.sleep(delay)
                     else:
-                        logger.error("[LLM] %s: All retries failed for model '%s'.", 
-                                     config.provider.value, model_id)
-            
+                        logger.error(
+                            "[LLM] %s: All retries failed for model '%s'.",
+                            config.provider.value,
+                            model_id,
+                        )
+
         raise RuntimeError(
             f"[LLM] All models and retries failed for {config.provider.value}. Last error: {last_exception}"
         )
@@ -2163,44 +2229,45 @@ class MultiProviderLLMClient:
         base_url = config.base_url or PROVIDER_DEFAULTS.get(config.provider.value, {}).get("base_url")
         if not base_url:
             return []
-        
+
         headers = {"Authorization": f"Bearer {config.api_key}"}
         if config.provider == LLMProvider.OPENROUTER:
             headers["X-Title"] = "CrispTranslator"
-            
+
         try:
             resp = requests.get(f"{base_url}/models", headers=headers, timeout=10)
             if resp.status_code != 200:
                 logger.error("[LLM] HTTP %d: %s", resp.status_code, resp.text)
                 return []
-            
+
             data = resp.json()
             models = []
             raw_models = data.get("data", []) if isinstance(data, dict) else data
-            
+
             for m in raw_models:
                 m_id = m.get("id")
-                if not m_id: continue
-                
+                if not m_id:
+                    continue
+
                 # Parse capabilities
                 caps = []
                 if "context_window" in m:
                     caps.append(f"ctx: {m['context_window']}")
                 elif "context_length" in m:
                     caps.append(f"ctx: {m['context_length']}")
-                
+
                 if m.get("pricing"):
                     p = m["pricing"]
                     caps.append(f"price: {p.get('prompt', '?')}/{p.get('completion', '?')}")
-                
+
                 info = {
                     "id": m_id,
                     "capabilities": ", ".join(caps) if caps else "Available",
-                    "raw": m
+                    "raw": m,
                 }
                 models.append(info)
                 logger.debug("[LLM] Found model: %s (%s)", m_id, info["capabilities"])
-                
+
             return sorted(models, key=lambda x: x["id"])
         except Exception as e:
             logger.debug("[LLM] Model listing failed: %s", e)
@@ -2208,10 +2275,7 @@ class MultiProviderLLMClient:
 
     def _list_anthropic_models(self, config: LLMConfig) -> List[Dict[str, Any]]:
         # Anthropic recently added /v1/models
-        headers = {
-            "x-api-key": config.api_key,
-            "anthropic-version": "2023-06-01"
-        }
+        headers = {"x-api-key": config.api_key, "anthropic-version": "2023-06-01"}
         try:
             resp = requests.get("https://api.anthropic.com/v1/models", headers=headers, timeout=10)
             if resp.status_code == 200:
@@ -2222,12 +2286,12 @@ class MultiProviderLLMClient:
                     info = {
                         "id": m_id,
                         "capabilities": f"Display: {m.get('display_name', '')}",
-                        "raw": m
+                        "raw": m,
                     }
                     models.append(info)
                     logger.debug("[LLM] Found Anthropic model: %s", m_id)
                 return models
-        except:
+        except Exception:
             pass
         # Fallback if endpoint is not available
         return [{"id": "claude-3-5-sonnet-20241022", "capabilities": "Hardcoded Fallback"}]
@@ -2246,7 +2310,7 @@ class MultiProviderLLMClient:
                     models.append({"id": m_id, "capabilities": caps, "raw": m})
                     logger.debug("[LLM] Found Ollama model: %s (%s)", m_id, caps)
                 return models
-        except:
+        except Exception:
             pass
         return []
 
@@ -2255,6 +2319,7 @@ class MultiProviderLLMClient:
         if not HAS_OPENAI:
             raise ImportError("openai package not installed")
         from openai import OpenAI
+
         kwargs: Dict[str, Any] = {"api_key": config.api_key}
         base = config.base_url or PROVIDER_DEFAULTS.get(config.provider.value, {}).get("base_url")
         if base:
@@ -2267,13 +2332,18 @@ class MultiProviderLLMClient:
                 "X-Title": "CrispTranslator",
             }
         client = OpenAI(**kwargs)
-        logger.debug("[LLM] %s → %s | sys=%d chars user=%d chars",
-                     config.provider.value, config.model, len(system), len(user))
+        logger.debug(
+            "[LLM] %s → %s | sys=%d chars user=%d chars",
+            config.provider.value,
+            config.model,
+            len(system),
+            len(user),
+        )
         resp = client.chat.completions.create(
             model=config.model,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user",   "content": user},
+                {"role": "user", "content": user},
             ],
             max_tokens=config.max_tokens,
             temperature=config.temperature,
@@ -2286,11 +2356,15 @@ class MultiProviderLLMClient:
     # ── Ollama ────────────────────────────────────────────────────────
     def _ollama(self, system: str, user: str, config: LLMConfig) -> str:
         base_url = config.base_url or "http://localhost:11434/api"
-        logger.debug("[LLM] ollama → %s | sys=%d chars user=%d chars",
-                     config.model, len(system), len(user))
-        
+        logger.debug(
+            "[LLM] ollama → %s | sys=%d chars user=%d chars",
+            config.model,
+            len(system),
+            len(user),
+        )
+
         prompt = f"{system}\n\n{user}" if system else user
-        
+
         resp = requests.post(
             f"{base_url}/generate",
             json={
@@ -2299,13 +2373,13 @@ class MultiProviderLLMClient:
                 "stream": False,
                 "options": {
                     "temperature": config.temperature,
-                }
+                },
             },
-            timeout=180
+            timeout=180,
         )
         if resp.status_code != 200:
             raise RuntimeError(f"Ollama error {resp.status_code}: {resp.text}")
-        
+
         text = resp.json().get("response", "")
         logger.debug("[LLM] Response: %d chars", len(text))
         return text
@@ -2315,9 +2389,14 @@ class MultiProviderLLMClient:
         if not HAS_ANTHROPIC:
             raise ImportError("anthropic package not installed")
         import anthropic as ant
+
         client = ant.Anthropic(api_key=config.api_key)
-        logger.debug("[LLM] anthropic → %s | sys=%d chars user=%d chars",
-                     config.model, len(system), len(user))
+        logger.debug(
+            "[LLM] anthropic → %s | sys=%d chars user=%d chars",
+            config.model,
+            len(system),
+            len(user),
+        )
         resp = client.messages.create(
             model=config.model,
             system=system,
@@ -2349,9 +2428,10 @@ class MultiProviderLLMClient:
             return "".join(parts)
 
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # If a loop is already running, run in a new thread
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                 fut = ex.submit(asyncio.run, _query())
                 return fut.result(timeout=120)
@@ -2362,6 +2442,7 @@ class MultiProviderLLMClient:
 # ============================================================================
 # LLM – BLUEPRINT TEXT EXTRACTION
 # ============================================================================
+
 
 def extract_blueprint_text(doc: Document, max_chars: int = 40_000) -> str:
     """
@@ -2447,7 +2528,7 @@ Write the style guide as actionable, imperative rules (e.g., "Always use...", "N
 """
 
 _SG_USER_TMPL = """\
-Below is a comprehensive excerpt from the **blueprint document**, including sampled footnotes. 
+Below is a comprehensive excerpt from the **blueprint document**, including sampled footnotes.
 Analyse its editorial conventions with extreme care.
 
 DOCUMENT EXCERPT (Body & Footnotes):
@@ -2456,7 +2537,7 @@ DOCUMENT EXCERPT (Body & Footnotes):
 ──────────────────────────────────────────────────
 {extra_section}
 
-Produce a **MASTER STYLE GUIDE** in Markdown. 
+Produce a **MASTER STYLE GUIDE** in Markdown.
 
 CRITICAL: Your guide must be detailed enough to handle complex academic citations and specific punctuation (like »...« quotation marks) without ambiguity.
 
@@ -2498,7 +2579,11 @@ class StyleGuideGenerator:
                 try:
                     content = p.read_text(encoding="utf-8", errors="replace")
                     parts.append(f"### Additional style information from '{p.name}':\n{content}")
-                    logger.info("[LLM-SG] Loaded extra styleguide: %s (%d chars)", p.name, len(content))
+                    logger.info(
+                        "[LLM-SG] Loaded extra styleguide: %s (%d chars)",
+                        p.name,
+                        len(content),
+                    )
                 except Exception as exc:
                     logger.warning("[LLM-SG] Could not read extra styleguide '%s': %s", p, exc)
             if parts:
@@ -2524,12 +2609,12 @@ class StyleGuideGenerator:
 
 # Matches inline Markdown in priority order (longest markers first)
 _MD_TOKEN = re.compile(
-    r"\*\*\*(.+?)\*\*\*"   # bold+italic  → group 1
-    r"|\*\*(.+?)\*\*"       # bold         → group 2
-    r"|\*(.+?)\*"           # italic (*)   → group 3
-    r"|_(.+?)_"             # italic (_)   → group 4
-    r"|([^*_\n]+)"          # plain text   → group 5
-    r"|([*_]+|\n)",         # stray chars  → group 6
+    r"\*\*\*(.+?)\*\*\*"  # bold+italic  → group 1
+    r"|\*\*(.+?)\*\*"  # bold         → group 2
+    r"|\*(.+?)\*"  # italic (*)   → group 3
+    r"|_(.+?)_"  # italic (_)   → group 4
+    r"|([^*_\n]+)"  # plain text   → group 5
+    r"|([*_]+|\n)",  # stray chars  → group 6
     re.DOTALL,
 )
 
@@ -2544,7 +2629,7 @@ def parse_md_runs(text: str) -> List["RunData"]:
     for m in _MD_TOKEN.finditer(text):
         g1, g2, g3, g4, g5, g6 = m.groups()
         if g1:
-            runs.append(RunData(text=g1, bold=True,  italic=True))
+            runs.append(RunData(text=g1, bold=True, italic=True))
         elif g2:
             runs.append(RunData(text=g2, bold=True))
         elif g3:
@@ -2554,7 +2639,7 @@ def parse_md_runs(text: str) -> List["RunData"]:
         elif g5:
             runs.append(RunData(text=g5))
         elif g6:
-            runs.append(RunData(text=g6))   # stray marker as plain text
+            runs.append(RunData(text=g6))  # stray marker as plain text
     return [r for r in runs if r.text]
 
 
@@ -2567,7 +2652,7 @@ You are a scholarly editor applying a strict editorial style guide to existing t
 Your task is to re-format the provided text to match the Style Guide's exact conventions.
 
 CONSTRAINTS:
-1. SUBSTANTIVE VERBATIM: Do NOT change the substantive meaning, names, or titles. 
+1. SUBSTANTIVE VERBATIM: Do NOT change the substantive meaning, names, or titles.
 2. EDITORIAL RE-FORMATTING: You MUST change punctuation, quotation marks, and citation structure (e.g., brackets vs commas, colons vs spaces) to strictly follow the Style Guide.
 3. DO NOT translate, summarize, or paraphrase.
 4. DO NOT add any introductory remarks or commentary.
@@ -2674,7 +2759,9 @@ class LLMContentFormatter:
         to_format = [p for p in paras if p.get_text().strip()]
         logger.info(
             "[LLM-FMT] Formatting %d %s(s) in batches of %d…",
-            len(to_format), mode, config.para_batch_size,
+            len(to_format),
+            mode,
+            config.para_batch_size,
         )
 
         prefix = "P" if mode == "para" else "F"
@@ -2682,19 +2769,19 @@ class LLMContentFormatter:
         for batch_start in range(0, len(to_format), config.para_batch_size):
             # Inter-batch delay to stay under rate limits
             if batch_start > 0:
-                batch_delay = 2.0 # 2 seconds between batches
+                batch_delay = 2.0  # 2 seconds between batches
                 if config.provider == LLMProvider.GROQ:
-                    batch_delay = 15.0 # Extra delay for Groq (very tight limits)
+                    batch_delay = 15.0  # Extra delay for Groq (very tight limits)
                 logger.info("[LLM-FMT] Inter-batch delay: %.1fs...", batch_delay)
                 time.sleep(batch_delay)
 
-            batch = to_format[batch_start: batch_start + config.para_batch_size]
-            
+            batch = to_format[batch_start : batch_start + config.para_batch_size]
+
             # Wrap each paragraph in indexed tags
             tagged_texts = []
             for i, p in enumerate(batch, 1):
                 tagged_texts.append(f"[{prefix}{i}]{p.get_text()}[/{prefix}{i}]")
-            
+
             content = "\n".join(tagged_texts)
             tmpl = _FN_USER_TMPL if mode == "footnote" else _PARA_USER_TMPL
             user_msg = tmpl.format(
@@ -2705,7 +2792,10 @@ class LLMContentFormatter:
 
             logger.debug(
                 "[LLM-FMT] Batch %d–%d (%d items), user_msg=%d chars",
-                batch_start, batch_start + len(batch) - 1, len(batch), len(user_msg),
+                batch_start,
+                batch_start + len(batch) - 1,
+                len(batch),
+                len(user_msg),
             )
 
             try:
@@ -2720,7 +2810,9 @@ class LLMContentFormatter:
                     result[id(pd)] = formatted
                     logger.debug(
                         "[LLM-FMT] %s formatted: orig='%.50s' → fmt='%.50s'",
-                        mode.capitalize(), pd.get_text(), formatted,
+                        mode.capitalize(),
+                        pd.get_text(),
+                        formatted,
                     )
 
         return result
@@ -2738,19 +2830,19 @@ class LLMContentFormatter:
             # Non-greedy match between start and end tags
             pattern = rf"\[{tag}\](.*?)\[\/{tag}\]"
             match = re.search(pattern, response, re.DOTALL)
-            
+
             if match:
                 results.append(match.group(1).strip())
             else:
                 # Try fallback: just the start tag if the LLM forgot the end tag
-                pattern_fallback = rf"\[{tag}\](.*?)(?=\[{prefix}{i+1}\]|$)"
+                pattern_fallback = rf"\[{tag}\](.*?)(?=\[{prefix}{i + 1}\]|$)"
                 match_fallback = re.search(pattern_fallback, response, re.DOTALL)
                 if match_fallback:
                     results.append(match_fallback.group(1).strip())
                 else:
                     logger.warning("[LLM-FMT] Could not find tag [%s] in response", tag)
-                    results.append(originals[i-1])
-        
+                    results.append(originals[i - 1])
+
         return results
 
 
@@ -2861,8 +2953,11 @@ class LLMFormatTransplanter:
         logger.info("  LLM mode   : %s", llm_mode)
         if debug_limit:
             logger.info("  Debug limit: %d paragraphs", debug_limit)
-        logger.info("  Batch size : %d  Context chars: %d",
-                    llm_config.para_batch_size, llm_config.blueprint_context_chars)
+        logger.info(
+            "  Batch size : %d  Context chars: %d",
+            llm_config.para_batch_size,
+            llm_config.blueprint_context_chars,
+        )
         logger.info("═" * 60)
 
         client = MultiProviderLLMClient()
@@ -2875,8 +2970,11 @@ class LLMFormatTransplanter:
         # ── Phase 1-LLM: Styleguide generation / loading ───────────────
         if styleguide_in and styleguide_in.exists():
             styleguide_md = styleguide_in.read_text(encoding="utf-8")
-            logger.info("Phase 1-LLM – Loaded existing styleguide from %s (%d chars)",
-                        styleguide_in, len(styleguide_md))
+            logger.info(
+                "Phase 1-LLM – Loaded existing styleguide from %s (%d chars)",
+                styleguide_in,
+                len(styleguide_md),
+            )
         else:
             logger.info("Phase 1-LLM – Generating style guide…")
             sg_gen = StyleGuideGenerator(client)
@@ -2909,26 +3007,29 @@ class LLMFormatTransplanter:
                 if count >= debug_limit:
                     break
             body_elements = limited_body
-            logger.info("Debug limit applied: only processing first %d body paragraphs.", debug_limit)
+            logger.info(
+                "Debug limit applied: only processing first %d body paragraphs.",
+                debug_limit,
+            )
 
         # ── Phase 2-LLM: LLM content formatting ───────────────────────
         formatter = LLMContentFormatter(client)
         llm_para_map: Dict[int, str] = {}
-        llm_fn_map:   Dict[int, str] = {}
+        llm_fn_map: Dict[int, str] = {}
 
         if llm_mode in ("both", "paragraphs"):
             logger.info("Phase 2-LLM – Formatting body paragraphs…")
-            para_candidates = [
-                e for e in body_elements
-                if e.semantic_class != "table" and e.get_text().strip()
-            ]
+            para_candidates = [e for e in body_elements if e.semantic_class != "table" and e.get_text().strip()]
             llm_para_map = formatter.format_paragraphs(para_candidates, styleguide_md, llm_config)
             logger.info("Phase 2-LLM – %d paragraph(s) formatted by LLM", len(llm_para_map))
 
         if llm_mode in ("both", "footnotes") and footnotes:
             logger.info("Phase 2-LLM – Formatting footnotes…")
             llm_fn_map = formatter.format_footnotes(footnotes, styleguide_md, llm_config)
-            logger.info("Phase 2-LLM – %d footnote paragraph(s) formatted by LLM", len(llm_fn_map))
+            logger.info(
+                "Phase 2-LLM – %d footnote paragraph(s) formatted by LLM",
+                len(llm_fn_map),
+            )
 
         # ── Phase 3: Style mapping ─────────────────────────────────────
         logger.info("Phase 3 – Building style map…")
@@ -2940,7 +3041,7 @@ class LLMFormatTransplanter:
         builder = DocumentBuilder(schema, mapper)
         builder.src_style_id_to_name = extractor.src_style_id_to_name
         builder.llm_para_map = llm_para_map
-        builder.llm_fn_map   = llm_fn_map
+        builder.llm_fn_map = llm_fn_map
         builder.build(blueprint_path, output_path, body_elements, footnotes)
 
         logger.info("═" * 60)
@@ -3002,14 +3103,17 @@ Debug tips:
     )
     # ── Positional ─────────────────────────────────────────────────────
     parser.add_argument("blueprint", help="Blueprint DOCX – provides all formatting")
-    parser.add_argument("source",    help="Source DOCX – provides all text content")
-    parser.add_argument("output",    help="Output DOCX path")
+    parser.add_argument("source", help="Source DOCX – provides all text content")
+    parser.add_argument("output", help="Output DOCX path")
 
     # ── General ────────────────────────────────────────────────────────
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Enable DEBUG logging")
-    parser.add_argument("--style-map", nargs="+", metavar="SRC=BP",
-                        help='Style overrides: "Source Style=Blueprint Style"')
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable DEBUG logging")
+    parser.add_argument(
+        "--style-map",
+        nargs="+",
+        metavar="SRC=BP",
+        help='Style overrides: "Source Style=Blueprint Style"',
+    )
 
     # ── LLM options ────────────────────────────────────────────────────
     llm_group = parser.add_argument_group("LLM options (all optional)")
@@ -3020,28 +3124,64 @@ Debug tips:
         metavar="PROVIDER",
         help="LLM provider: " + ", ".join(PROVIDER_DEFAULTS.keys()),
     )
-    llm_group.add_argument("--llm-model",   default=None, metavar="MODEL",
-                           help="Model name (default: provider default)")
-    llm_group.add_argument("--llm-key",     default=None, metavar="KEY",
-                           help="API key (default: read from env var)")
+    llm_group.add_argument(
+        "--llm-model",
+        default=None,
+        metavar="MODEL",
+        help="Model name (default: provider default)",
+    )
+    llm_group.add_argument(
+        "--llm-key",
+        default=None,
+        metavar="KEY",
+        help="API key (default: read from env var)",
+    )
     llm_group.add_argument(
         "--llm-mode",
         choices=["both", "paragraphs", "footnotes", "styleguide_only"],
         default="both",
         help="Which content goes through LLM (default: both)",
     )
-    llm_group.add_argument("--styleguide-out", default=None, metavar="PATH",
-                           help="Save generated style guide to this .md file")
-    llm_group.add_argument("--styleguide-in",  default=None, metavar="PATH",
-                           help="Load pre-existing style guide (skip generation)")
-    llm_group.add_argument("--extra-styleguide", nargs="+", default=None, metavar="PATH",
-                           help="Extra style-info files sent to LLM during generation")
-    llm_group.add_argument("--llm-context-chars", type=int, default=40_000, metavar="N",
-                           help="Blueprint chars to send for styleguide gen (default: 40000)")
-    llm_group.add_argument("--llm-batch", type=int, default=15, metavar="N",
-                           help="Source paragraphs per LLM batch (default: 15)")
-    llm_group.add_argument("--debug-limit", type=int, default=None, metavar="N",
-                           help="Process only first N paragraphs (for testing)")
+    llm_group.add_argument(
+        "--styleguide-out",
+        default=None,
+        metavar="PATH",
+        help="Save generated style guide to this .md file",
+    )
+    llm_group.add_argument(
+        "--styleguide-in",
+        default=None,
+        metavar="PATH",
+        help="Load pre-existing style guide (skip generation)",
+    )
+    llm_group.add_argument(
+        "--extra-styleguide",
+        nargs="+",
+        default=None,
+        metavar="PATH",
+        help="Extra style-info files sent to LLM during generation",
+    )
+    llm_group.add_argument(
+        "--llm-context-chars",
+        type=int,
+        default=40_000,
+        metavar="N",
+        help="Blueprint chars to send for styleguide gen (default: 40000)",
+    )
+    llm_group.add_argument(
+        "--llm-batch",
+        type=int,
+        default=15,
+        metavar="N",
+        help="Source paragraphs per LLM batch (default: 15)",
+    )
+    llm_group.add_argument(
+        "--debug-limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Process only first N paragraphs (for testing)",
+    )
 
     args = parser.parse_args()
 
@@ -3050,8 +3190,8 @@ Debug tips:
         logger.debug("DEBUG logging enabled")
 
     blueprint_path = Path(args.blueprint)
-    source_path    = Path(args.source)
-    output_path    = Path(args.output)
+    source_path = Path(args.source)
+    output_path = Path(args.output)
 
     if not blueprint_path.exists():
         logger.error("Blueprint file not found: %s", blueprint_path)
@@ -3069,14 +3209,14 @@ Debug tips:
         try:
             cfg = llm_config_from_args(args.llm, args.llm_model, args.llm_key)
             cfg.blueprint_context_chars = args.llm_context_chars
-            cfg.para_batch_size         = args.llm_batch
+            cfg.para_batch_size = args.llm_batch
         except ValueError as exc:
             logger.error("%s", exc)
             sys.exit(1)
 
         extra_sg = [Path(p) for p in args.extra_styleguide] if args.extra_styleguide else None
-        sg_in    = Path(args.styleguide_in)  if args.styleguide_in  else None
-        sg_out   = Path(args.styleguide_out) if args.styleguide_out else None
+        sg_in = Path(args.styleguide_in) if args.styleguide_in else None
+        sg_out = Path(args.styleguide_out) if args.styleguide_out else None
 
         transplanter = LLMFormatTransplanter()
         try:

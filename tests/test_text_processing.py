@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+# pylint: disable=unused-import  # _helpers import has sys.path side effect
 from tests._helpers import REPO_ROOT  # noqa: F401  (ensures sys.path)
 from rtf_to_docx_endnotes import (
     INLINE_RE,
@@ -19,24 +20,27 @@ from rtf_to_docx_endnotes import (
 
 class TestSplitBodyNotes(unittest.TestCase):
     def test_basic_split(self):
-        md = (
-            "# Title\n\n"
-            "Body paragraph one.\n\n"
-            "## Endnotes\n\n"
-            "[1] First note.\n"
-        )
+        md = "# Title\n\nBody paragraph one.\n\n## Endnotes\n\n[1] First note.\n"
         body, notes = split_body_notes(md)
         self.assertIn("Body paragraph one.", body)
         self.assertNotIn("Endnotes", body)
         self.assertIn("[1] First note.", notes)
 
     def test_alternative_headers_caseinsensitive(self):
-        for header in ("## Notes", "### footnotes", "## Anmerkungen",
-                       "## ENDNOTES", "## References"):
+        for header in (
+            "## Notes",
+            "### footnotes",
+            "## Anmerkungen",
+            "## ENDNOTES",
+            "## References",
+        ):
             md = f"Body text.\n\n{header}\n\n[1] note"
             body, notes = split_body_notes(md)
-            self.assertNotIn(header.lstrip("# ").strip(), body,
-                             f"header leaked into body for {header!r}")
+            self.assertNotIn(
+                header.lstrip("# ").strip(),
+                body,
+                f"header leaked into body for {header!r}",
+            )
             self.assertIn("[1] note", notes)
 
     def test_missing_header_raises(self):
@@ -46,10 +50,7 @@ class TestSplitBodyNotes(unittest.TestCase):
 
 class TestParseNotes(unittest.TestCase):
     def test_simple_notes(self):
-        notes_md = (
-            "[1] First note text.\n\n"
-            "[2] Second note text.\n"
-        )
+        notes_md = "[1] First note text.\n\n[2] Second note text.\n"
         d = parse_notes(notes_md)
         self.assertEqual(d[1], "First note text.")
         self.assertEqual(d[2], "Second note text.")
@@ -88,11 +89,7 @@ class TestParseNotes(unittest.TestCase):
 
 class TestRewriteBody(unittest.TestCase):
     def test_replaces_numeric_markers_only(self):
-        body = (
-            "Quote.[1] More text.[42] "
-            "Slide marker [S2] stays. "
-            "Author tag [Liedhegener] stays."
-        )
+        body = "Quote.[1] More text.[42] Slide marker [S2] stays. Author tag [Liedhegener] stays."
         out = rewrite_body(body, valid_nums={1, 42})
         self.assertIn("[^1]", out)
         self.assertIn("[^42]", out)

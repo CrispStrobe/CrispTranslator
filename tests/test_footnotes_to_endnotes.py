@@ -7,8 +7,13 @@ import unittest
 import zipfile
 from pathlib import Path
 
+# pylint: disable=unused-import  # _helpers import has sys.path side effect
 from tests._helpers import (  # noqa: F401
-    REPO_ROOT, W_DOC_HEAD, W_DOC_TAIL, write_docx, part,
+    REPO_ROOT,
+    W_DOC_HEAD,
+    W_DOC_TAIL,
+    write_docx,
+    part,
 )
 from rtf_to_docx_endnotes import footnotes_to_endnotes
 
@@ -16,12 +21,13 @@ from rtf_to_docx_endnotes import footnotes_to_endnotes
 # A document with one inline footnote reference.
 DOC_XML = (
     W_DOC_HEAD
-    + '<w:body><w:p>'
+    + "<w:body><w:p>"
     + '<w:r><w:t xml:space="preserve">Body. </w:t></w:r>'
     + '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr>'
     + '<w:footnoteReference w:id="1"/></w:r>'
     + '<w:r><w:t xml:space="preserve"> after.</w:t></w:r>'
-    + '</w:p></w:body>' + W_DOC_TAIL
+    + "</w:p></w:body>"
+    + W_DOC_TAIL
 )
 
 FOOTNOTES_XML = (
@@ -32,8 +38,8 @@ FOOTNOTES_XML = (
     '<w:footnote w:id="1"><w:p>'
     '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r>'
     '<w:r><w:t xml:space="preserve"> the note body</w:t></w:r>'
-    '</w:p></w:footnote>'
-    '</w:footnotes>'
+    "</w:p></w:footnote>"
+    "</w:footnotes>"
 )
 
 

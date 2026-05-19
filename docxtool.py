@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""docxtool — unified CLI for the CrispTranslator suite.
+"""docxtool -- unified CLI for the CrispTranslator suite.
 
 Subcommands dispatch to the standalone scripts in this repo, so every
 existing tool keeps working on its own and gains a single, discoverable
 entry point.
 
 Usage:
-  docxtool notes        — RTF/MD with [N] citation markers → DOCX with real
+  docxtool notes        -- RTF/MD with [N] citation markers -> DOCX with real
                           Word footnotes/endnotes  (rtf_to_docx_endnotes.py)
-  docxtool transplant   — apply a blueprint docx's formatting to source
+  docxtool transplant   -- apply a blueprint docx's formatting to source
                           content                       (format_transplant.py)
-  docxtool translate    — translate a docx, preserving formatting at the
+  docxtool translate    -- translate a docx, preserving formatting at the
                           run level                             (translator.py)
-  docxtool debug        — inspect / validate / compare docx XML
+  docxtool debug        -- inspect / validate / compare docx XML
                                                             (debug_format.py)
-  docxtool clean        — strip rsid/paraId tracking attrs from a docx (the
+  docxtool clean        -- strip rsid/paraId tracking attrs from a docx (the
                           "Word found unreadable content" cure)
 
 Run `docxtool <subcommand> --help` for the full options of each.
@@ -23,7 +23,6 @@ Run `docxtool <subcommand> --help` for the full options of each.
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
@@ -35,6 +34,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 # --- subcommand handlers --------------------------------------------------
+
 
 def _delegate(script_name: str, args: list[str]) -> int:
     """Forward to a sibling script using the current Python interpreter.
@@ -71,7 +71,7 @@ def cmd_clean(args: list[str]) -> int:
     Word's "found unreadable content" warning is often triggered by
     w14:paraId / w:rsidR / w:rsidRPr / w:rsidDel / w:rsidRDefault references
     pointing at session IDs not declared in settings.xml's <w:rsids>.
-    Stripping these is safe — Word regenerates them on next save.
+    Stripping these is safe - Word regenerates them on next save.
     """
     p = argparse.ArgumentParser(
         prog="docxtool clean",
@@ -79,15 +79,20 @@ def cmd_clean(args: list[str]) -> int:
     )
     p.add_argument("input", type=Path, help="docx to clean")
     p.add_argument(
-        "-o", "--output", type=Path, default=None,
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
         help="output path (default: edit input in place)",
     )
     p.add_argument(
-        "--also-normalize-tags", action="store_true",
-        help="also rewrite textutil's non-standard OOXML tags (w:sz-cs → w:szCs)",
+        "--also-normalize-tags",
+        action="store_true",
+        help="also rewrite textutil's non-standard OOXML tags (w:sz-cs -> w:szCs)",
     )
     p.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="report what would be changed but don't write",
     )
     ns = p.parse_args(args)
@@ -96,9 +101,7 @@ def cmd_clean(args: list[str]) -> int:
     if not src.exists():
         print(f"docxtool clean: not found: {src}", file=sys.stderr)
         return 2
-    dst: Path = (
-        src if ns.output is None else ns.output.expanduser().resolve()
-    )
+    dst: Path = src if ns.output is None else ns.output.expanduser().resolve()
 
     # Reuse the rsid-strip primitive from rtf_to_docx_endnotes.
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -113,14 +116,14 @@ def cmd_clean(args: list[str]) -> int:
 
         total = 0
         with zipfile.ZipFile(src, "r") as zf:
-            for key in ("word/document.xml", "word/footnotes.xml",
-                        "word/endnotes.xml"):
+            for key in ("word/document.xml", "word/footnotes.xml", "word/endnotes.xml"):
                 try:
                     data = zf.read(key)
                 except KeyError:
                     continue
                 root = etree.fromstring(data)
                 from rtf_to_docx_endnotes import _RSID_PARA_ATTRS  # type: ignore
+
                 for elem in root.iter():
                     if not isinstance(elem.tag, str):
                         continue
@@ -131,7 +134,7 @@ def cmd_clean(args: list[str]) -> int:
         return 0
 
     removed = strip_rsids_from_docx(dst)
-    print(f"docxtool clean: stripped {removed} rsid/paraId attrs → {dst}")
+    print(f"docxtool clean: stripped {removed} rsid/paraId attrs -> {dst}")
 
     if ns.also_normalize_tags:
         renamed = _normalize_nonstandard_tags(dst)
@@ -150,7 +153,7 @@ TAG_RENAMES = {
 
 
 def _normalize_nonstandard_tags(docx_path: Path) -> int:
-    """Rewrite textutil's non-OOXML local names (w:sz-cs → w:szCs)."""
+    """Rewrite textutil's non-OOXML local names (w:sz-cs -> w:szCs)."""
     with zipfile.ZipFile(docx_path, "r") as zf:
         parts = {n: zf.read(n) for n in zf.namelist()}
 
@@ -183,7 +186,7 @@ def _normalize_nonstandard_tags(docx_path: Path) -> int:
 COMMANDS = {
     "notes": (
         cmd_notes,
-        "RTF/MD/DOCX with [N] markers → DOCX with real footnotes/endnotes",
+        "RTF/MD/DOCX with [N] markers -> DOCX with real footnotes/endnotes",
     ),
     "transplant": (
         cmd_transplant,

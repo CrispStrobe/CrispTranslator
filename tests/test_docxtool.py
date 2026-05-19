@@ -1,5 +1,6 @@
 """Unit tests for docxtool's standalone bits."""
 
+# pylint: disable=protected-access  # tests intentionally probe private helpers
 from __future__ import annotations
 
 import io
@@ -7,12 +8,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 
 from tests._helpers import (  # noqa: F401
-    REPO_ROOT, W_DOC_HEAD, W_DOC_TAIL, write_docx, part,
+    REPO_ROOT,
+    W_DOC_HEAD,
+    W_DOC_TAIL,
+    write_docx,
+    part,
 )
 import docxtool
 
@@ -20,11 +24,12 @@ import docxtool
 # Document with both rsid attrs and textutil-style non-standard tags.
 DOC_XML_DIRTY = (
     W_DOC_HEAD
-    + '<w:body>'
+    + "<w:body>"
     + '<w:p w14:paraId="A1B2" w:rsidR="1234">'
     + '<w:r><w:rPr><w:rFonts w:ascii="Arial"/><w:sz w:val="28"/><w:sz-cs w:val="28"/></w:rPr>'
     + '<w:t xml:space="preserve">Hello</w:t></w:r></w:p>'
-    + '</w:body>' + W_DOC_TAIL
+    + "</w:body>"
+    + W_DOC_TAIL
 )
 
 
@@ -41,11 +46,7 @@ class TestNormalizeNonstandardTags(unittest.TestCase):
             self.assertIn("w:szCs", after)
 
     def test_noop_on_clean_docx(self):
-        clean = (
-            W_DOC_HEAD
-            + '<w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body>'
-            + W_DOC_TAIL
-        )
+        clean = W_DOC_HEAD + "<w:body><w:p><w:r><w:t>x</w:t></w:r></w:p></w:body>" + W_DOC_TAIL
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "t.docx"
             write_docx(path, clean)
@@ -114,7 +115,9 @@ class TestDispatcher(unittest.TestCase):
     def _run(self, *argv: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             [sys.executable, str(REPO_ROOT / "docxtool.py"), *argv],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
+            check=False,
         )
 
     def test_top_level_help_lists_subcommands(self):
