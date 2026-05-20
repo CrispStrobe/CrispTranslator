@@ -12,6 +12,8 @@ Four complementary tools for working with Word documents at the formatting level
 
 All tools operate at the XML level of the OOXML format (`.docx`), preserving structure that higher-level APIs would silently discard.
 
+> **Rust port available.** The OOXML core of every tool here (clean, normalize-tags, footnotes↔endnotes, footnote injection, transplant, style mapping, heading inference, paragraph-runs IO, check) has been ported to [`crisp-docx`](https://github.com/CrispStrobe/crisp-docx) — a 6-crate Rust workspace with a `cargo install`-able CLI, PyO3 wheel, 12 LLM provider clients (OpenAI / Anthropic / Groq / OpenRouter / Together / Cerebras / Mistral / Nebius / Scaleway / Poe / Google / Ollama), offline NMT via [CrispASR](https://github.com/CrispStrobe/CrispASR), and SimAlign-driven word alignment via [CrispEmbed](https://github.com/CrispStrobe/CrispEmbed). Three Python bugs in this repo were found and fixed via the parity port (`strip_paragraph_bold` spurious nested-bold, `cmd_check` bookmark allow-list / `_rels/.rels` base / optional settings.xml). See `crisp-docx/PARITY.md` for the per-primitive status ledger.
+
 ---
 
 ## Table of Contents
