@@ -21,16 +21,13 @@ assert cmd_check reports them clean.
 from __future__ import annotations
 
 import io
-import sys
 import contextlib
 from pathlib import Path
 
 import argparse
 
-from tests._helpers import REPO_ROOT, W_DOC_HEAD, W_DOC_TAIL, write_docx  # noqa: F401
-
-sys.path.insert(0, str(REPO_ROOT))
-from debug_format import cmd_check  # type: ignore  # noqa: E402
+from tests._helpers import W_DOC_HEAD, W_DOC_TAIL, write_docx
+from debug_format import cmd_check  # type: ignore
 
 
 def _run_check(path: Path) -> tuple[int, list[str], list[str]]:
@@ -89,11 +86,17 @@ def test_legitimately_unexpected_body_child_still_flagged(tmp_path: Path) -> Non
     """The relaxation only adds bookmark elements to the allow-list;
     other unexpected children (e.g. a stray `<w:r>` outside a paragraph)
     should still be flagged."""
-    body = (
-        "<w:body>" "<w:r><w:t>orphan run</w:t></w:r>" "<w:p><w:r><w:t>hello</w:t></w:r></w:p>" "<w:sectPr/>" "</w:body>"
+    body = "".join(
+        [
+            "<w:body>",
+            "<w:r><w:t>orphan run</w:t></w:r>",
+            "<w:p><w:r><w:t>hello</w:t></w:r></w:p>",
+            "<w:sectPr/>",
+            "</w:body>",
+        ]
     )
     doc = f"{W_DOC_HEAD}{body}{W_DOC_TAIL}"
     docx = write_docx(tmp_path / "orphan.docx", doc)
-    rc, oks, fails = _run_check(docx)
+    rc, _, fails = _run_check(docx)
     assert rc == 1, f"expected fail, got: {fails}"
     assert any("unexpected element tags" in f for f in fails), f"fails={fails}"
